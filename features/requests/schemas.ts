@@ -1,0 +1,27 @@
+import { z } from "zod";
+
+const optionalHttpUrl = z
+  .string()
+  .trim()
+  .max(2048, "O link é muito longo")
+  .refine((value) => {
+    if (!value) return true;
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Informe um link HTTP ou HTTPS válido")
+  .transform((value) => value || null);
+
+export const requestSchema = z.object({
+  title: z.string().trim().min(2, "Informe o título").max(160, "Use até 160 caracteres"),
+  description: z.string().trim().max(5000, "Use até 5.000 caracteres").optional().default(""),
+  requesterName: z.string().trim().min(2, "Informe o solicitante").max(160, "Use até 160 caracteres"),
+  assignedTo: z.uuid("Selecione um responsável"),
+  externalUrl: optionalHttpUrl.optional().default(""),
+});
+
+export type RequestInput = z.input<typeof requestSchema>;
+export type ParsedRequestInput = z.output<typeof requestSchema>;
