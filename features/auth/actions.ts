@@ -25,6 +25,12 @@ export async function register(formData: FormData) {
     user_metadata: { full_name: parsed.data.fullName },
   });
   if (error) redirect("/register?erro=Não%20foi%20possível%20criar%20a%20conta");
+  const supabase = await createServerClient();
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: parsed.data.email,
+    password: parsed.data.password,
+  });
+  if (signInError) redirect("/login");
   redirect("/pending");
 }
 
