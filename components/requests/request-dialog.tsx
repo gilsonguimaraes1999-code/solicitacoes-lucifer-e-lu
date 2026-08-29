@@ -1,0 +1,18 @@
+"use client";
+
+import { useState } from "react";
+import type { Profile, RequestRecord } from "@/features/requests/types";
+import type { RequestInput } from "@/features/requests/schemas";
+
+export function RequestDialog({ request, profiles, canEdit, canDelete, onClose, onSave, onDelete }: { request: RequestRecord | null; profiles: Profile[]; canEdit: boolean; canDelete: boolean; onClose: () => void; onSave: (input: RequestInput) => Promise<void>; onDelete?: () => Promise<void> }) {
+  const [editing, setEditing] = useState(!request);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(formData: FormData) {
+    setBusy(true); setError("");
+    try { await onSave({ title: String(formData.get("title") ?? ""), description: String(formData.get("description") ?? ""), requesterName: String(formData.get("requesterName") ?? ""), assignedTo: String(formData.get("assignedTo") ?? ""), externalUrl: String(formData.get("externalUrl") ?? "") }); onClose(); }
+    catch { setError("Não foi possível salvar. Revise os dados e tente novamente."); }
+    finally { setBusy(false); }
+  }
+  return <div role="dialog" aria-modal="true" aria-label={request ? "Detalhes da solicitação" : "Nova solicitação"} className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="panel max-h-[92vh] w-full max-w-xl overflow-auto p-6"><header className="flex items-center justify-between gap-4"><h2 className="text-xl font-bold">{request ? (editing ? "Editar solicitação" : "Detalhes da solicitação") : "Nova solicitação"}</h2><button className="button secondary" onClick={onClose}>Fechar</button></header>{error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}{!editing && request ? <div className="mt-5 grid gap-4 text-sm"><div><b>Título</b><p>{request.title}</p></div><div><b>Descrição</b><p className="whitespace-pre-wrap">{request.description || "Sem descrição"}</p></div><div><b>Solicitante</b><p>{request.requester_name}</p></div><div><b>Responsável</b><p>{request.assignee?.full_name}</p></div>{request.external_url && <a href={request.external_url} target="_blank" rel="noopener noreferrer" className="text-blue-700">Abrir link externo</a>}<div className="flex gap-2">{canEdit && <button className="button" onClick={() => setEditing(true)}>Editar</button>}{canDelete && onDelete && <button className="button danger" onClick={async () => { if (!confirm("Excluir esta solicitação? Esta ação não pode ser desfeita.")) return; setBusy(true); await onDelete(); onClose(); }} disabled={busy}>Excluir</button>}</div></div> : <form action={submit} className="mt-5 grid gap-4"><label className="label">Título<input className="field" name="title" defaultValue={request?.title} required minLength={2} maxLength={160} /></label><label className="label">Descrição<textarea className="field min-h-28" name="description" defaultValue={request?.description ?? ""} maxLength={5000} /></label><label className="label">Solicitante<input className="field" name="requesterName" defaultValue={request?.requester_name} required /></label><label className="label">Responsável<select className="field" name="assignedTo" defaultValue={request?.assigned_to} required><option value="">Selecione</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name}</option>)}</select></label><label className="label">Link externo<input className="field" name="externalUrl" type="url" placeholder="https://" defaultValue={request?.external_url ?? ""} /></label><button className="button" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</button></form>}</section></div>;
+}
