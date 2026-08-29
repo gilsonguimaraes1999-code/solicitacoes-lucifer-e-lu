@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 import { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } from "@/features/auth/schemas";
 
@@ -17,12 +18,11 @@ export async function login(formData: FormData) {
 export async function register(formData: FormData) {
   const parsed = registerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/register?erro=Revise%20os%20dados%20informados");
-  const supabase = await createServerClient();
-  const origin = (await headers()).get("origin") ?? "http://localhost:3000";
-  const { error } = await supabase.auth.signUp({
+  const { error } = await createAdminClient().auth.admin.createUser({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: { data: { full_name: parsed.data.fullName }, emailRedirectTo: `${origin}/auth/callback` },
+    email_confirm: true,
+    user_metadata: { full_name: parsed.data.fullName },
   });
   if (error) redirect("/register?erro=Não%20foi%20possível%20criar%20a%20conta");
   redirect("/pending");
@@ -51,3 +51,4 @@ export async function logout() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
