@@ -31,9 +31,9 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const loadGeneration = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     const generation = ++loadGeneration.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const response = await fetch("/api/admin/users", { cache: "no-store" });
@@ -43,18 +43,20 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     } catch (caught) {
       if (generation === loadGeneration.current) setError(caught instanceof Error ? caught.message : "Não foi possível carregar os usuários.");
     } finally {
-      if (generation === loadGeneration.current) setLoading(false);
+      if (!silent && generation === loadGeneration.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
+    const refresh = () => { void load({ silent: true }); };
     const supabase = createBrowserClient();
     const channel = supabase.channel("admin-users")
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_permissions" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_permissions" }, refresh)
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    const interval = window.setInterval(refresh, 5000);
+    return () => { window.clearInterval(interval); void supabase.removeChannel(channel); };
   }, [load]);
 
   const counts = useMemo(() => ({
@@ -102,7 +104,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     setError("");
     try {
       await patchUser(user.id, { action: "status", approvalStatus: "approved" });
-      await load();
+      setUsers((current) => current.map((item) => item.id === user.id ? { ...item, approval_status: "approved" } : item));
       setNotice(`Conta de ${user.full_name} aprovada.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível aprovar a conta.");
@@ -153,4 +155,3 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     {showCreate && <CreateUserDialog onClose={() => setShowCreate(false)} onCreate={createUser} />}
   </main>;
 }
-
