@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ToastNotice } from "@/components/ui/site-toast";
+import { RequestTagIcons, RequestTagSelector } from "@/components/requests/request-tags";
 import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
 import type { RequestInput } from "@/features/requests/schemas";
 import type { Profile, RequestRecord } from "@/features/requests/types";
@@ -34,6 +35,7 @@ function requestFormValues(request: RequestRecord | null): RequestInput {
     description: request?.description ?? "",
     requesterName: request?.requester_name ?? "",
     assignedTo: request?.assigned_to ?? "",
+    tags: request?.tags ?? [],
     externalUrl: request?.external_url ?? "",
   };
 }
@@ -70,11 +72,12 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
       description: dirtyFieldsRef.current.has("description") ? current.description : remoteValues.description,
       requesterName: dirtyFieldsRef.current.has("requesterName") ? current.requesterName : remoteValues.requesterName,
       assignedTo: dirtyFieldsRef.current.has("assignedTo") ? current.assignedTo : remoteValues.assignedTo,
+      tags: dirtyFieldsRef.current.has("tags") ? current.tags : remoteValues.tags,
       externalUrl: dirtyFieldsRef.current.has("externalUrl") ? current.externalUrl : remoteValues.externalUrl,
     }));
   }, [request]);
 
-  function updateField(field: FormField, value: string) {
+  function updateField<K extends FormField>(field: K, value: RequestInput[K]) {
     dirtyFieldsRef.current.add(field);
     setFormValues((current) => ({ ...current, [field]: value }));
   }
@@ -93,6 +96,10 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
       : `Entrará em: ${selectedDestination?.name ?? "Pendente"}`;
 
   async function submit() {
+    if (formValues.tags.length === 0) {
+      setError("Selecione pelo menos uma tag.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -148,6 +155,7 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
             <div><b>Descrição</b><p className="whitespace-pre-wrap">{request.description || "Sem descrição"}</p></div>
             <div><b>Solicitante</b><p>{request.requester_name}</p></div>
             <div><b>Responsável</b><p>{request.assignee?.full_name ?? "—"}</p></div>
+            <div><b>Tags</b><RequestTagIcons tags={request.tags ?? []} /></div>
             {request.external_url && <a href={request.external_url} target="_blank" rel="noopener noreferrer" className="text-gold-soft">Abrir link externo</a>}
             {canMove && (
               <div className="grid gap-2">
@@ -169,6 +177,7 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
             <label className="label">Solicitante<input className="field" name="requesterName" value={formValues.requesterName} onChange={(event) => updateField("requesterName", event.target.value)} required /></label>
             <label className="label">Responsável<select className="field" name="assignedTo" value={formValues.assignedTo} onChange={(event) => updateField("assignedTo", event.target.value)} required><option value="">Selecione</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name}</option>)}</select></label>
             <p className="-mt-2 text-sm text-white/45" aria-live="polite">{destinationMessage}</p>
+            <RequestTagSelector value={formValues.tags} onChange={(tags) => updateField("tags", tags)} />
             <label className="label">Link externo<input className="field" name="externalUrl" type="url" placeholder="https://" value={formValues.externalUrl} onChange={(event) => updateField("externalUrl", event.target.value)} /></label>
             <button className="button" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</button>
           </form>
@@ -188,4 +197,3 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
     </div>
   );
 }
-
