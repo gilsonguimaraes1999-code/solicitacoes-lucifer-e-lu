@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ToastNotice } from "@/components/ui/site-toast";
 import { renameColumnSchema } from "@/features/columns/schemas";
 import type { BoardColumn } from "@/features/columns/types";
 
@@ -97,12 +98,12 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
     {renaming ? <form className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-white/10 bg-[#101010] p-3 shadow-2xl" onSubmit={rename}>
       <label className="sr-only" htmlFor={`column-name-${column.id}`}>Novo nome da lista</label>
       <input id={`column-name-${column.id}`} className="field" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} minLength={2} maxLength={80} required />
-      {error && <p role="alert" className="mt-2 text-xs text-red-300">{error}</p>}
+      {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
       <div className="mt-3 flex justify-end gap-2"><button type="button" className="button secondary px-3 py-2 text-xs" disabled={busy} onClick={() => { setName(column.name); setError(""); setRenaming(false); }}>Cancelar</button><button type="submit" className="button px-3 py-2 text-xs" disabled={busy}>Salvar nome</button></div>
     </form> : null}
     <button ref={triggerRef} type="button" className="icon-button" aria-label={`Abrir ações da lista ${column.name}`} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button>
     {menuOpen && !renaming && <div className="absolute right-0 top-9 z-20 w-56 rounded-xl border border-white/10 bg-[#101010] p-1.5 shadow-2xl">
-      {error && <p role="alert" className="px-2 py-2 text-xs text-red-300">{error}</p>}
+      {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
       {onReorder && <><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a esquerda`} disabled={busy || !canMoveLeft} onClick={() => void move("left")}><ChevronLeft size={16} />Mover para a esquerda</button><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a direita`} disabled={busy || !canMoveRight} onClick={() => void move("right")}><ChevronRight size={16} />Mover para a direita</button></>}
       <button type="button" className="menu-action" disabled={busy} onClick={() => { setName(column.name); setError(""); setMenuOpen(false); setRenaming(true); }}><Pencil size={15} />Renomear lista</button>
       <button type="button" className="menu-action danger-text" disabled={busy} onClick={() => { setMenuOpen(false); setConfirmingDelete(true); }}><Trash2 size={15} />Excluir lista</button>
@@ -110,3 +111,4 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
     {confirmingDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da lista" title="Excluir lista?" itemName={column.name} description="A lista será removida permanentemente. Só é possível excluir listas que não possuem solicitações." busy={busy} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void remove()} />}
   </div>;
 }
+
