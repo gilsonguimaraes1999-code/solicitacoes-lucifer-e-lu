@@ -8,6 +8,8 @@ describe("RequestTagSelector", () => {
   it("usa chips compactos, alinhados e uma cor própria para cada tag", () => {
     render(<RequestTagSelector value={["hub"]} onChange={vi.fn()} />);
 
+    const legend = screen.getByText("Tags", { selector: "legend" });
+    const row = legend.nextElementSibling;
     const f1 = screen.getByRole("button", { name: "Tag F1" });
     const loja = screen.getByRole("button", { name: "Tag Loja" });
     const jogo = screen.getByRole("button", { name: "Tag Jogo" });
@@ -28,5 +30,7 @@ describe("RequestTagSelector", () => {
     expect(growth.className).toContain("emerald");
     expect(outros.className).toContain("slate");
     expect(hub).toHaveAttribute("aria-pressed", "true");
+    expect(legend).toHaveClass("sr-only");
+    expect(row).toHaveClass("justify-start");
   });
 });
