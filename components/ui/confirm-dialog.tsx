@@ -32,7 +32,7 @@ export function ConfirmDialog({ ariaLabel, title, itemName, description, busy = 
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
-      className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-[90] grid place-items-center bg-black/80 p-4 backdrop-blur-md"
     >
       <section className="w-full max-w-md overflow-hidden rounded-3xl border border-[#d4af37]/30 bg-[#0b0b0b] shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
         <div className="h-px bg-gradient-to-r from-transparent via-[#d4af37] to-transparent" />
