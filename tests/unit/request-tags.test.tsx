@@ -18,6 +18,7 @@ describe("RequestTagSelector", () => {
     for (const chip of [f1, loja, jogo, hub, growth, outros]) {
       expect(chip).toHaveClass("h-7", "px-2.5", "text-xs");
       expect(chip).not.toHaveClass("filter-chip");
+      expect(chip).toHaveStyle({ fontSize: "0.75rem" });
     }
 
     expect(f1.className).toContain("rose");
