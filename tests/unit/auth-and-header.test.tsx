@@ -39,6 +39,13 @@ describe("autenticação", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ocultar senha" }));
     expect(password).toHaveAttribute("type", "password");
   });
+
+  it("mostra erros de autenticação como toast no centro inferior", async () => {
+    render(await LoginPage({ searchParams: Promise.resolve({ erro: "E-mail ou senha inválidos." }) }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("E-mail ou senha inválidos.");
+    expect(screen.getByRole("alert")).toHaveClass("fixed", "bottom-6", "left-1/2");
+  });
 });
 
 describe("AppHeader", () => {
