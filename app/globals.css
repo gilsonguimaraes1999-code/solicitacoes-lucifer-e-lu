@@ -28,7 +28,6 @@ h1, h2, h3, .font-display { font-family: "Outfit", "Inter", sans-serif; }
 .text-gold-soft { color: var(--gold-soft); }
 .eyebrow { color: var(--gold); font-size: .68rem; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
 .panel { border: 1px solid var(--border); border-radius: .9rem; background: var(--surface); box-shadow: 0 20px 55px -18px rgba(0,0,0,.72), inset 0 1px rgba(255,255,255,.04); backdrop-filter: blur(14px) saturate(135%); }
-.auth-card { border: 1px solid rgba(212,175,55,.2); border-radius: 1rem; background: rgba(8,8,8,.68); box-shadow: 0 30px 80px -24px rgba(0,0,0,.9), inset 0 1px rgba(255,255,255,.05); backdrop-filter: blur(12px); }
 .field { width: 100%; border: 1px solid rgba(255,255,255,.14); border-radius: .65rem; padding: .72rem .85rem; background: rgba(255,255,255,.055); color: white; transition: border-color .15s, background .15s, box-shadow .15s; }
 .field::placeholder { color: rgba(255,255,255,.34); }
 .field:hover { border-color: rgba(255,255,255,.23); }
