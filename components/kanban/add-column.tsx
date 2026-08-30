@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createColumnSchema } from "@/features/columns/schemas";
+import { ToastNotice } from "@/components/ui/site-toast";
 import type { BoardColumn } from "@/features/columns/types";
 import type { Profile } from "@/features/requests/types";
 
@@ -50,7 +51,7 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
   return <form className="min-w-0 rounded-2xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-md" onSubmit={submit}>
     <h2 className="text-sm font-bold text-white">Adicionar outra lista</h2>
     {eligibleProfiles.length === 0 ? <><p className="mt-3 text-sm text-white/45">Todos os responsáveis aprovados já possuem uma lista.</p><button type="button" className="button secondary mt-3" disabled={busy} onClick={() => setOpen(false)}>Cancelar</button></> : <>
-      {error && <p role="alert" className="alert-error mt-3">{error}</p>}
+      {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
       <label className="label mt-3">Responsável
         <select className="field" value={assigneeId} onChange={(event) => changeAssignee(event.target.value)} disabled={busy} required>
           <option value="">Selecione</option>
@@ -67,3 +68,4 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
     </>}
   </form>;
 }
+
