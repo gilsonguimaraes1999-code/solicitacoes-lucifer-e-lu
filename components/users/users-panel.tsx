@@ -85,7 +85,15 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     }
     await load();
     setEditing(null);
-    setNotice("Alterações salvas com sucesso.");
+  }
+
+  async function deleteUser(id: string) {
+    const target = users.find((user) => user.id === id);
+    const response = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível excluir a conta."));
+    await load();
+    setEditing(null);
+    setNotice(`Conta de ${target?.full_name ?? "usuário"} excluída.`);
   }
 
   async function approve(user: AdminUser) {
@@ -140,7 +148,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
         {!loading && filtered.length === 0 && <div className="p-12 text-center text-white/45">Nenhum usuário encontrado com estes filtros.</div>}
       </section>
     </div>
-    {editing && <UserEditor user={editing} onClose={() => setEditing(null)} onSave={saveUser} />}
+    {editing && <UserEditor user={editing} onClose={() => setEditing(null)} onSave={saveUser} onDelete={deleteUser} />}
     {showCreate && <CreateUserDialog onClose={() => setShowCreate(false)} onCreate={createUser} />}
   </main>;
 }

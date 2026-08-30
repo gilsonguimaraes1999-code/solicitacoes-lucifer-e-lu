@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { AdminUser, PermissionSet, UserEditorValue } from "@/features/users/types";
 
 const permissionLabels: [keyof PermissionSet, string, string][] = [
@@ -13,13 +14,15 @@ const permissionLabels: [keyof PermissionSet, string, string][] = [
   ["can_manage_columns", "Gerenciar colunas", "Permite criar, ordenar, renomear e excluir listas."],
 ];
 
-export function UserEditor({ user, onClose, onSave }: { user: AdminUser; onClose: () => void; onSave: (id: string, value: UserEditorValue) => Promise<void> }) {
+export function UserEditor({ user, onClose, onSave, onDelete }: { user: AdminUser; onClose: () => void; onSave: (id: string, value: UserEditorValue) => Promise<void>; onDelete?: (id: string) => Promise<void> }) {
   const owner = user.role === "owner";
   const [fullName, setFullName] = useState(user.full_name);
   const [approvalStatus, setApprovalStatus] = useState(user.approval_status);
   const [permissions, setPermissions] = useState(user.permissions);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,7 +41,21 @@ export function UserEditor({ user, onClose, onSave }: { user: AdminUser; onClose
     }
   }
 
-  return <Modal title="Editar usuário" description={user.email} onClose={onClose}>
+  async function removeAccount() {
+    if (!onDelete || owner) return;
+    setDeleting(true);
+    setError("");
+    try {
+      await onDelete(user.id);
+    } catch (caught) {
+      setConfirmDelete(false);
+      setError(caught instanceof Error ? caught.message : "Não foi possível excluir a conta.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return <><Modal title="Editar usuário" description={user.email} onClose={onClose}>
     <form onSubmit={submit} className="grid gap-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="label">Nome completo<input className="field" value={fullName} onChange={(event) => setFullName(event.target.value)} required minLength={2} maxLength={120} disabled={busy} /></label>
@@ -54,7 +71,7 @@ export function UserEditor({ user, onClose, onSave }: { user: AdminUser; onClose
         </div>
       </section>
       {error && <p role="alert" className="alert-error">{error}</p>}
-      <div className="flex flex-wrap justify-end gap-2"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancelar</button><button type="submit" className="button" disabled={busy}>{busy ? "Salvando..." : "Salvar alterações"}</button></div>
+      <div className="flex flex-wrap items-center gap-2">{!owner && onDelete && <button type="button" className="button danger mr-auto inline-flex items-center gap-2" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 size={16} />Excluir conta</button>}<button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancelar</button><button type="submit" className="button" disabled={busy}>{busy ? "Salvando..." : "Salvar alterações"}</button></div>
     </form>
-  </Modal>;
+  </Modal>{confirmDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da conta" title="Excluir esta conta?" itemName={user.full_name} description={`${user.email} será removido permanentemente. As solicitações vinculadas serão transferidas para a conta owner e retornarão à lista Pendente.`} busy={deleting} onCancel={() => setConfirmDelete(false)} onConfirm={() => void removeAccount()} />}</>;
 }
