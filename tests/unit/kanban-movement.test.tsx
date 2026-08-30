@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   getRequest: vi.fn(),
   deleteRequest: vi.fn(),
   dragEnd: undefined as unknown as (event: DragEndEvent) => Promise<void>,
+  dragStart: undefined as unknown as (event: { active: { id: string } }) => void,
+  dragCancel: undefined as unknown as () => void,
+  sensors: [] as Array<{ options?: { activationConstraint?: { distance?: number } } }>,
   requestChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => Promise<void>,
   accessibility: undefined as unknown as { announcements?: Announcements; screenReaderInstructions?: ScreenReaderInstructions },
 }));
@@ -22,11 +25,15 @@ vi.mock("@dnd-kit/core", async (importOriginal) => {
   const original = await importOriginal<typeof import("@dnd-kit/core")>();
   return {
     ...original,
-    DndContext: ({ children, onDragEnd, accessibility }: { children: ReactNode; onDragEnd: (event: DragEndEvent) => Promise<void>; accessibility?: { announcements?: Announcements; screenReaderInstructions?: ScreenReaderInstructions } }) => {
+    DndContext: ({ children, onDragStart, onDragCancel, onDragEnd, accessibility, sensors }: { children: ReactNode; onDragStart?: (event: { active: { id: string } }) => void; onDragCancel?: () => void; onDragEnd: (event: DragEndEvent) => Promise<void>; accessibility?: { announcements?: Announcements; screenReaderInstructions?: ScreenReaderInstructions }; sensors?: Array<{ options?: { activationConstraint?: { distance?: number } } }> }) => {
       mocks.dragEnd = onDragEnd;
+      mocks.dragStart = onDragStart ?? (() => undefined);
+      mocks.dragCancel = onDragCancel ?? (() => undefined);
+      mocks.sensors = sensors ?? [];
       mocks.accessibility = accessibility ?? {};
       return <>{children}</>;
     },
+    DragOverlay: ({ children }: { children: ReactNode }) => children ? <div data-testid="drag-overlay">{children}</div> : null,
   };
 });
 
@@ -730,6 +737,23 @@ describe("KanbanBoard save routing", () => {
 });
 
 describe("KanbanBoard accessibility", () => {
+  it("exige deslocamento antes de iniciar o arraste com o mouse", () => {
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    expect(mocks.sensors[0]?.options?.activationConstraint?.distance).toBe(8);
+  });
+
+  it("mostra uma prévia flutuante apenas durante o arraste", () => {
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    expect(screen.queryByTestId("drag-overlay")).not.toBeInTheDocument();
+    act(() => mocks.dragStart({ active: { id: sourceRequest.id } }));
+    expect(screen.getByTestId("drag-overlay")).toHaveTextContent(sourceRequest.title);
+
+    act(() => mocks.dragCancel());
+    expect(screen.queryByTestId("drag-overlay")).not.toBeInTheDocument();
+  });
+
   it("fornece instruções e anúncios de arraste em português com nomes", () => {
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 

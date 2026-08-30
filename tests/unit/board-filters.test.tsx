@@ -40,9 +40,17 @@ describe("KanbanColumn", () => {
     expect(screen.getByText("1", { selector: "span" })).toBeInTheDocument();
   });
 
-  it("impede o gesto de toque nativo no handle arrastável", () => {
-    render(<KanbanColumn column={columns[3]} requests={[requests[0]]} canMove canManageColumns={false} onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
+  it("usa o cartão inteiro para abrir e arrastar sem exibir um botão de arraste", () => {
+    const onOpen = vi.fn();
+    const { container } = render(<KanbanColumn column={columns[3]} requests={[requests[0]]} canMove canManageColumns={false} onOpen={onOpen} onRename={vi.fn()} onDelete={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Mover Primeiro" }).style.touchAction).toBe("none");
+    const card = container.querySelector("article");
+    expect(card).not.toBeNull();
+    if (!card) return;
+    expect(card.style.touchAction).toBe("none");
+    expect(card).not.toHaveTextContent("Arrastar");
+
+    fireEvent.click(card);
+    expect(onOpen).toHaveBeenCalledOnce();
   });
 });
