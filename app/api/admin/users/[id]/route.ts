@@ -32,3 +32,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (error) return NextResponse.json({ error: "Não foi possível salvar as alterações do usuário." }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const sessionClient = await createServerClient();
+  const { data: { user } } = await sessionClient.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  const { data: actor } = await sessionClient.from("profiles").select("role,approval_status").eq("id", user.id).single();
+  if (actor?.role !== "owner" || actor.approval_status !== "approved") return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
+
+  const { id } = await params;
+  const admin = createAdminClient();
+  const { data: target, error: targetError } = await admin.from("profiles").select("id,role").eq("id", id).maybeSingle();
+  if (targetError) return NextResponse.json({ error: "Não foi possível localizar o perfil do usuário." }, { status: 500 });
+  if (!target) return NextResponse.json({ error: "O perfil deste usuário não existe." }, { status: 404 });
+  if (target.role === "owner") return NextResponse.json({ error: "A conta owner não pode ser excluída." }, { status: 400 });
+
+  const { error: prepareError } = await admin.rpc("prepare_member_deletion", { target_user_id: id, replacement_user_id: user.id });
+  if (prepareError) return NextResponse.json({ error: "Não foi possível realocar as solicitações desta conta." }, { status: 500 });
+
+  const { error: deleteError } = await admin.auth.admin.deleteUser(id);
+  if (deleteError) return NextResponse.json({ error: "Os vínculos foram realocados, mas a conta não pôde ser excluída. Tente novamente." }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
