@@ -112,14 +112,29 @@ describe("ColumnActions", () => {
   });
 
   it("informa quando a coluna ocupada não pode ser excluída", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const onDelete = vi.fn().mockRejectedValue({ code: "23503" });
     render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={onDelete} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir lista" }));
+    expect(screen.getByRole("dialog", { name: "Confirmar exclusão da lista" })).toBeInTheDocument();
+    expect(screen.getByText("Ana")).toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
 
     expect(await screen.findByText("Mova os cartões antes de excluir esta coluna.")).toBeInTheDocument();
-    confirmSpy.mockRestore();
+  });
+
+  it("cancela a confirmação sem excluir a lista", () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={onDelete} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir lista" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(screen.queryByRole("dialog", { name: "Confirmar exclusão da lista" })).not.toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });

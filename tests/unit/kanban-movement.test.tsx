@@ -426,13 +426,13 @@ describe("KanbanBoard movement", () => {
     const pendingMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
     mocks.deleteRequest.mockRejectedValue(new Error("não deveria chamar"));
-    vi.stubGlobal("confirm", vi.fn(() => true));
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
     fireEvent.click(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/não é possível excluir.*movimentação/i);
     expect(mocks.deleteRequest).not.toHaveBeenCalled();
@@ -448,13 +448,13 @@ describe("KanbanBoard movement", () => {
     const pendingMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
     mocks.getRequest.mockRejectedValue(new Error("offline"));
-    vi.stubGlobal("confirm", vi.fn(() => true));
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
     fireEvent.click(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
     await screen.findByRole("alert");
 
     await act(async () => {
@@ -468,11 +468,11 @@ describe("KanbanBoard movement", () => {
   it("bloqueia drag sem mutação otimista enquanto a exclusão está pendente", async () => {
     const pendingDelete = deferred<void>();
     mocks.deleteRequest.mockReturnValue(pendingDelete.promise);
-    vi.stubGlobal("confirm", vi.fn(() => true));
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
     await waitFor(() => expect(mocks.deleteRequest).toHaveBeenCalledOnce());
     drag(sourceRequest.id, "column-pending");
 
@@ -484,11 +484,11 @@ describe("KanbanBoard movement", () => {
   it("mostra falha de exclusão, libera a UI e aceita uma operação posterior", async () => {
     mocks.deleteRequest.mockRejectedValue(new Error("offline"));
     mocks.moveRequest.mockResolvedValue({ ...sourceRequest, column_id: "column-pending", status: "pending", position: 1024 });
-    vi.stubGlobal("confirm", vi.fn(() => true));
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível excluir a solicitação. Tente novamente.");
     expect(screen.getByRole("button", { name: "Excluir" })).toBeEnabled();

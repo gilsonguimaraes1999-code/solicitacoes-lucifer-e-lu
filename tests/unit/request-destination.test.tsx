@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RequestDialog } from "@/components/requests/request-dialog";
 import type { BoardColumn } from "@/features/columns/types";
@@ -131,5 +131,35 @@ describe("RequestDialog status actions", () => {
 
     rejectMove(new Error("A coluna de destino não foi encontrada."));
     expect(await screen.findByText("A coluna de destino não foi encontrada.")).toBeInTheDocument();
+  });
+});
+
+describe("RequestDialog deletion", () => {
+  it("exige confirmação temática antes de excluir a solicitação", async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(<RequestDialog {...baseProps} request={request} canDelete onDelete={onDelete} onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+
+    const confirmation = screen.getByRole("dialog", { name: "Confirmar exclusão da solicitação" });
+    expect(within(confirmation).getByText("Pedido de acesso")).toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
+
+    await waitFor(() => expect(onDelete).toHaveBeenCalledOnce());
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("cancela a confirmação sem excluir", () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={request} canDelete onDelete={onDelete} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(screen.queryByRole("dialog", { name: "Confirmar exclusão da solicitação" })).not.toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });
