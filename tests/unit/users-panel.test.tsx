@@ -55,6 +55,25 @@ describe("UsersPanel", () => {
     expect(screen.queryByText("Alterações salvas com sucesso.")).not.toBeInTheDocument();
     vi.unstubAllGlobals();
   });
+
+  it("exibe a exclusão de usuário como toast no centro inferior", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith("/api/admin/users/") && init?.method === "DELETE") return { ok: true, json: async () => ({ ok: true }) };
+      return { ok: true, json: async () => [member] };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<UsersPanel currentUserId="owner-id" />);
+
+    await screen.findByText("Lua");
+    fireEvent.click(screen.getByRole("button", { name: "Editar Lua" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir conta" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
+
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent("Conta de Lua excluída.");
+    expect(toast).toHaveClass("fixed", "bottom-6", "left-1/2");
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("UserEditor", () => {
@@ -109,3 +128,4 @@ describe("sortUsersByName", () => {
     expect(sortUsersByName(users, "desc").map((user) => user.fullName)).toEqual(["Zeca", "Ágata"]);
   });
 });
+
