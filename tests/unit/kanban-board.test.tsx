@@ -153,6 +153,7 @@ describe("KanbanBoard", () => {
 
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Lucifer", "Bruno"]);
     expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível reordenar a lista. A ordem anterior foi restaurada.");
+    expect(screen.getByRole("alert")).toHaveClass("fixed", "bottom-6", "left-1/2");
   });
 
   it("preserva a ordem confirmada por Realtime quando a resposta da RPC de reordenação falha", async () => {
@@ -227,3 +228,4 @@ describe("KanbanBoard", () => {
     expect(screen.queryByRole("heading", { level: 2, name: "Lucifer" })).not.toBeInTheDocument();
   });
 });
+
