@@ -34,6 +34,16 @@ h1, h2, h3, .font-display { font-family: "Outfit", "Inter", sans-serif; }
 .field:focus { border-color: rgba(212,175,55,.7); background: rgba(255,255,255,.075); box-shadow: 0 0 0 3px rgba(212,175,55,.1); outline: 0; }
 .field option { background: #111; color: white; }
 .label { display: grid; gap: .42rem; color: rgba(255,255,255,.72); font-size: .86rem; font-weight: 600; }
+.calculator-login-field { width: 100%; height: 2.25rem; border: 1px solid rgba(255,255,255,.12); border-radius: .5rem; padding: .25rem .75rem; background: transparent; color: white; font-size: .875rem; font-weight: 400; transition: border-color .16s, box-shadow .16s; }
+.calculator-login-field:hover { border-color: rgba(255,255,255,.22); }
+.calculator-login-field:focus { border-color: rgba(212,175,55,.72); box-shadow: 0 0 0 2px rgba(212,175,55,.12); outline: 0; }
+.calculator-login-primary, .calculator-login-ghost, .calculator-login-access { display: inline-flex; height: 2.25rem; align-items: center; justify-content: center; border-radius: .5rem; padding: .5rem 1rem; font-size: .875rem; font-weight: 500; transition: background-color .16s, color .16s, transform .16s; }
+.calculator-login-primary { background: #d4af37; color: #050505; }
+.calculator-login-primary:hover { background: #e2c04d; }
+.calculator-login-primary:active { transform: translateY(1px); }
+.calculator-login-ghost { color: rgba(255,255,255,.62); }
+.calculator-login-access { color: white; }
+.calculator-login-ghost:hover, .calculator-login-access:hover { background: rgba(255,255,255,.05); color: white; }
 .button { border: 1px solid rgba(240,215,124,.28); border-radius: .65rem; padding: .7rem 1rem; background: linear-gradient(135deg,var(--gold-bright),var(--gold-soft)); color: #080808; font-weight: 800; box-shadow: 0 8px 24px -12px rgba(212,175,55,.8); transition: transform .15s, filter .15s, border-color .15s; }
 .button:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
 .button.secondary { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.065); color: rgba(255,255,255,.8); box-shadow: none; }
@@ -83,3 +93,4 @@ h1, h2, h3, .font-display { font-family: "Outfit", "Inter", sans-serif; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
