@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REQUEST_TAGS } from "@/features/requests/tags";
 
 const optionalHttpUrl = z
   .string()
@@ -20,6 +21,7 @@ export const requestSchema = z.object({
   description: z.string().trim().max(5000, "Use até 5.000 caracteres").optional().default(""),
   requesterName: z.string().trim().min(2, "Informe o solicitante").max(160, "Use até 160 caracteres"),
   assignedTo: z.uuid("Selecione um responsável"),
+  tags: z.array(z.enum(REQUEST_TAGS)).min(1, "Selecione pelo menos uma tag.").max(REQUEST_TAGS.length).refine((tags) => new Set(tags).size === tags.length, "Não repita tags."),
   externalUrl: optionalHttpUrl.optional().default(""),
 });
 

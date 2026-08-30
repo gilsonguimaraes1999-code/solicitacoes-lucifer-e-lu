@@ -1,3 +1,5 @@
+import type { RequestTag } from "@/features/requests/tags";
+
 export const REQUEST_STATUSES = ["pending", "in_progress", "completed"] as const;
 
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
@@ -38,6 +40,7 @@ export interface RequestRecord {
   requester_name: string;
   assigned_to: string;
   external_url: string | null;
+  tags: RequestTag[];
   status: RequestStatus | null;
   column_id: string;
   position: number;

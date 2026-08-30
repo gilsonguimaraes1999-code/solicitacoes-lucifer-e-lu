@@ -11,6 +11,7 @@ export async function createRequest(input: RequestInput, _createdBy: string, pos
     new_requester_name: data.requesterName,
     new_assigned_to: data.assignedTo,
     new_external_url: data.externalUrl,
+    new_tags: data.tags,
     new_position: position,
   });
   if (response.error) throw response.error;
@@ -30,7 +31,7 @@ export async function getRequest(requestId: string) {
 export async function updateRequest(requestId: string, input: RequestInput) {
   const data = requestSchema.parse(input);
   const supabase = createBrowserClient();
-  const response = await supabase.rpc("update_request_content", { request_id: requestId, new_title: data.title, new_description: data.description, new_requester_name: data.requesterName, new_assigned_to: data.assignedTo, new_external_url: data.externalUrl });
+  const response = await supabase.rpc("update_request_content", { request_id: requestId, new_title: data.title, new_description: data.description, new_requester_name: data.requesterName, new_assigned_to: data.assignedTo, new_external_url: data.externalUrl, new_tags: data.tags });
   if (response.error) throw response.error;
   return response.data as RequestRecord;
 }
