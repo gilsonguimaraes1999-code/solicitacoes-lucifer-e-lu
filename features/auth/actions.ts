@@ -24,6 +24,11 @@ export async function register(formData: FormData) {
     email_confirm: true,
     user_metadata: { full_name: parsed.data.fullName },
   });
+  const duplicateEmail = error?.code === "email_exists"
+    || (error?.status === 422 && /already been registered|email.*already.*exist/i.test(error.message));
+  if (duplicateEmail) {
+    redirect("/register?erro=Este%20e-mail%20já%20possui%20uma%20conta%20ou%20uma%20solicitação%20aguardando%20aprovação.%20Entre%20ou%20recupere%20sua%20senha.");
+  }
   if (error) redirect("/register?erro=Não%20foi%20possível%20criar%20a%20conta");
   const supabase = await createServerClient();
   const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -57,4 +62,3 @@ export async function logout() {
   await supabase.auth.signOut();
   redirect("/login");
 }
-
