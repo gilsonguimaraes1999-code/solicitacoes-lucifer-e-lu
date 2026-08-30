@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
 import type { RequestInput } from "@/features/requests/schemas";
 import type { Profile, RequestRecord } from "@/features/requests/types";
@@ -56,6 +57,7 @@ function deletionErrorMessage(error: unknown) {
 export function RequestDialog({ request, profiles, columns, canEdit, canDelete, canMove, onClose, onSave, onMoveToSystem, onDelete }: RequestDialogProps) {
   const [editing, setEditing] = useState(!request);
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState("");
   const [formValues, setFormValues] = useState<RequestInput>(() => requestFormValues(request));
   const dirtyFieldsRef = useRef(new Set<FormField>());
@@ -116,14 +118,16 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
   }
 
   async function remove() {
-    if (!onDelete || !confirm("Excluir esta solicitação? Esta ação não pode ser desfeita.")) return;
+    if (!onDelete) return;
     setBusy(true);
     setError("");
     try {
       await onDelete();
+      setConfirmingDelete(false);
       onClose();
     } catch (deleteError) {
       setError(deletionErrorMessage(deleteError));
+      setConfirmingDelete(false);
     } finally {
       setBusy(false);
     }
@@ -154,7 +158,7 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
             )}
             <div className="flex gap-2">
               {canEdit && <button type="button" className="button" onClick={() => setEditing(true)}>Editar</button>}
-              {canDelete && onDelete && <button type="button" className="button danger" onClick={() => void remove()} disabled={busy}>Excluir</button>}
+              {canDelete && onDelete && <button type="button" className="button danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>Excluir</button>}
             </div>
           </div>
         ) : (
@@ -169,6 +173,17 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
           </form>
         )}
       </section>
+      {confirmingDelete && request && (
+        <ConfirmDialog
+          ariaLabel="Confirmar exclusão da solicitação"
+          title="Excluir solicitação?"
+          itemName={request.title}
+          description="Esta solicitação e seus dados serão removidos permanentemente. Esta ação não pode ser desfeita."
+          busy={busy}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => void remove()}
+        />
+      )}
     </div>
   );
 }
