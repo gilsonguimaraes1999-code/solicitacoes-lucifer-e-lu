@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteToastProvider } from "@/components/ui/site-toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,5 +9,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR"><body>{children}</body></html>;
+  return <html lang="pt-BR"><body><SiteToastProvider>{children}</SiteToastProvider></body></html>;
 }
+
