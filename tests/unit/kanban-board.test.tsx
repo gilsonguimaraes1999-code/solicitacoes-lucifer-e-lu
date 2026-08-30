@@ -128,6 +128,7 @@ describe("KanbanBoard", () => {
     mocks.reorderBoardColumn.mockResolvedValue({ ...columns[3], position: 6144 });
     render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a direita" }));
 
     await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith("column-lucifer", 6144));
@@ -141,6 +142,7 @@ describe("KanbanBoard", () => {
     mocks.reorderBoardColumn.mockReturnValue(reorder.promise);
     render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a direita" }));
     await waitFor(() => expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Bruno", "Lucifer"]));
     await act(async () => {
@@ -158,6 +160,7 @@ describe("KanbanBoard", () => {
     mocks.reorderBoardColumn.mockReturnValue(reorder.promise);
     render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a direita" }));
     await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledOnce());
     emitColumnChange("UPDATE", confirmed);
@@ -197,6 +200,7 @@ describe("KanbanBoard", () => {
     mocks.renameBoardColumn.mockReturnValue(rename.promise);
     render(<KanbanBoard initialRequests={requests} initialColumns={[...columns.slice(0, 3), renamedColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
     fireEvent.change(screen.getByLabelText("Novo nome da lista"), { target: { value: "Nome atrasado" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar nome" }));

@@ -82,6 +82,7 @@ describe("ColumnActions", () => {
     const onRename = vi.fn().mockResolvedValue(undefined);
     render(<ColumnActions column={columns[0]} canManageColumns onRename={onRename} onDelete={vi.fn()} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
     fireEvent.change(screen.getByLabelText("Novo nome da lista"), { target: { value: "Atendimento Ana" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar nome" }));
@@ -93,6 +94,7 @@ describe("ColumnActions", () => {
     const { rerender } = render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
 
     rerender(<ColumnActions column={{ ...columns[0], name: "Nome recebido em tempo real" }} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Nome recebido em tempo real" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
 
     expect(screen.getByLabelText("Novo nome da lista")).toHaveValue("Nome recebido em tempo real");
@@ -103,6 +105,7 @@ describe("ColumnActions", () => {
     const onDelete = vi.fn().mockRejectedValue({ code: "23503" });
     render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={onDelete} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir lista" }));
 
     expect(await screen.findByText("Mova os cartões antes de excluir esta coluna.")).toBeInTheDocument();

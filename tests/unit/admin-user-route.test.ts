@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
   sessionFrom: vi.fn(),
   adminFrom: vi.fn(),
   upsert: vi.fn(),
+  update: vi.fn(),
+  updateEq: vi.fn(),
+  targetSelect: vi.fn(),
+  targetEq: vi.fn(),
+  targetMaybeSingle: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -32,7 +37,14 @@ describe("PATCH /api/admin/users/[id]", () => {
     mocks.profileSelect.mockReturnValue({ eq: mocks.profileEq });
     mocks.sessionFrom.mockReturnValue({ select: mocks.profileSelect });
     mocks.upsert.mockResolvedValue({ error: null });
-    mocks.adminFrom.mockReturnValue({ upsert: mocks.upsert });
+    mocks.updateEq.mockResolvedValue({ error: null });
+    mocks.update.mockReturnValue({ eq: mocks.updateEq });
+    mocks.targetMaybeSingle.mockResolvedValue({ data: { id: "member-id", role: "member" }, error: null });
+    mocks.targetEq.mockReturnValue({ maybeSingle: mocks.targetMaybeSingle });
+    mocks.targetSelect.mockReturnValue({ eq: mocks.targetEq });
+    mocks.adminFrom.mockImplementation((table: string) => table === "profiles"
+      ? { select: mocks.targetSelect, update: mocks.update }
+      : { upsert: mocks.upsert });
   });
 
   it("cria permissões ausentes com os cinco campos", async () => {
@@ -51,5 +63,41 @@ describe("PATCH /api/admin/users/[id]", () => {
     expect(response.status).toBe(200);
     expect(mocks.adminFrom).toHaveBeenCalledWith("user_permissions");
     expect(mocks.upsert).toHaveBeenCalledWith({ user_id: "member-id", ...permissions }, { onConflict: "user_id" });
+  });
+
+  it("aprova a conta informada e não outra conta", async () => {
+    const response = await PATCH(new Request("http://localhost/api/admin/users/member-id", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "status", approvalStatus: "approved" }),
+    }), { params: Promise.resolve({ id: "member-id" }) });
+
+    expect(response.status).toBe(200);
+    expect(mocks.adminFrom).toHaveBeenCalledWith("profiles");
+    expect(mocks.update).toHaveBeenCalledWith({ approval_status: "approved" });
+    expect(mocks.updateEq).toHaveBeenCalledWith("id", "member-id");
+  });
+
+  it("expõe uma mensagem administrativa útil quando a persistência falha", async () => {
+    mocks.updateEq.mockResolvedValue({ error: { message: "permission denied for table profiles" } });
+
+    const response = await PATCH(new Request("http://localhost/api/admin/users/member-id", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "rename", fullName: "Lua" }),
+    }), { params: Promise.resolve({ id: "member-id" }) });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "Não foi possível salvar as alterações do usuário." });
+  });
+
+  it("retorna 404 em vez de confirmar uma atualização de perfil inexistente", async () => {
+    mocks.targetMaybeSingle.mockResolvedValue({ data: null, error: null });
+
+    const response = await PATCH(new Request("http://localhost/api/admin/users/missing-id", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "status", approvalStatus: "approved" }),
+    }), { params: Promise.resolve({ id: "missing-id" }) });
+
+    expect(response.status).toBe(404);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });
