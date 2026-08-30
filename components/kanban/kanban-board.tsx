@@ -5,6 +5,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Plus, Search } from "lucide-react";
 import { AddColumn } from "@/components/kanban/add-column";
+import { BoardNotice, type BoardMessage } from "@/components/kanban/board-notice";
 import { BoardFilters } from "@/components/kanban/board-filters";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { RequestDialog } from "@/components/requests/request-dialog";
@@ -85,7 +86,19 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
   const pendingOperationsRef = useRef(new Map<string, PendingOperation>());
   const tombstonesRef = useRef(new Set<string>());
   const columnTombstonesRef = useRef(new Set<string>());
-  const [message, setMessage] = useState("");
+  const [message, setMessageState] = useState<BoardMessage | null>(null);
+  const clearMessage = useCallback(() => setMessageState(null), []);
+  const setMessage = useCallback((text: string) => {
+    if (!text) {
+      setMessageState(null);
+      return;
+    }
+    const error = text.startsWith("Não ")
+      || text.startsWith("A movimentação")
+      || text.startsWith("Uma movimentação")
+      || text.startsWith("A exclusão");
+    setMessageState({ text, tone: error ? "error" : "success" });
+  }, []);
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -467,9 +480,9 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
           <div><p className="eyebrow">Fluxo da equipe</p><h1 className="mt-1 text-3xl font-black text-white">Quadro de solicitações</h1><p className="mt-2 text-sm text-white/50">Acompanhe o trabalho da equipe em tempo real.</p></div>
           {permissions.canCreate && <button className="button inline-flex items-center gap-2" onClick={() => setSelected(null)}><Plus size={18} />Nova solicitação</button>}
         </header>
-        {message && <div role="status" aria-live="polite" className="alert-success mb-4"><span>{message}</span><button type="button" className="font-semibold" aria-label="Fechar mensagem" onClick={() => setMessage("")}>Fechar</button></div>}
+        <BoardNotice message={message} onClose={clearMessage} />
         <div className="panel mb-5 grid gap-3 p-3">
-          <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
+          <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field" style={{ paddingLeft: "2.75rem" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
           <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} />
         </div>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMove} accessibility={accessibility}>
