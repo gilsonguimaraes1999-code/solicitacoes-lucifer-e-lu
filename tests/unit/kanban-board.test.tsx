@@ -124,15 +124,15 @@ describe("KanbanBoard", () => {
     expect(await screen.findByText("Lista adicionada.")).toBeInTheDocument();
   });
 
-  it("reordena somente colunas personalizadas por controles acessíveis e mantém as fixas primeiro", async () => {
-    mocks.reorderBoardColumn.mockResolvedValue({ ...columns[3], position: 6144 });
+  it("move uma coluna personalizada por uma posição visível, atravessando as colunas fixas", async () => {
+    mocks.reorderBoardColumn.mockResolvedValue({ ...columns[3], position: 2560 });
     render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
-    fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a direita" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a esquerda" }));
 
-    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith("column-lucifer", 6144));
-    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Bruno", "Lucifer"]);
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith("column-lucifer", 2560));
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Lucifer", "Concluído", "Bruno"]);
     expect(screen.queryByRole("button", { name: /Mover lista Pendente/ })).not.toBeInTheDocument();
     expect(screen.getByText("Lista reordenada.")).toBeInTheDocument();
   });

@@ -29,6 +29,19 @@ describe("columnsReducer", () => {
     expect(columnsReducer(once, { type: "snapshot", columns: [columns[2]] })).toEqual([columns[2]]);
   });
 
+  it("intercala responsáveis pela posição sem alterar a ordem relativa dos status fixos", () => {
+    const betweenPendingAndProgress = { ...columns[3], position: 1.5 };
+    const beforePending = { ...columns[0], position: 0.5 };
+
+    expect(columnsReducer([], { type: "snapshot", columns: [columns[1], columns[2], columns[4], betweenPendingAndProgress, beforePending] }).map((column) => column.id)).toEqual([
+      "assignee-z",
+      "pending",
+      "assignee-a",
+      "progress",
+      "completed",
+    ]);
+  });
+
   it("mantém chaves de sistema desconhecidas depois das chaves válidas", () => {
     const unknownSystemColumn = {
       ...columns[0],

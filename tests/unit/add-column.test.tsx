@@ -90,6 +90,17 @@ describe("ColumnActions", () => {
     await waitFor(() => expect(onRename).toHaveBeenCalledWith("33333333-3333-4333-8333-333333333333", "Atendimento Ana"));
   });
 
+  it("fecha o menu quando o usuário clica fora dele", () => {
+    render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
+    expect(screen.getByRole("button", { name: "Renomear lista" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole("button", { name: "Renomear lista" })).not.toBeInTheDocument();
+  });
+
   it("inicia a edição com o nome remoto mais recente", () => {
     const { rerender } = render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
 
