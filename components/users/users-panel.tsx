@@ -7,12 +7,12 @@ import { createBrowserClient } from "@/lib/supabase/browser";
 import { filterUsersByStatus, type UserStatusFilter } from "@/features/users/filter-users";
 import type { ApprovalStatus } from "@/features/requests/types";
 
-type PermissionSet = { can_create_requests: boolean; can_edit_requests: boolean; can_move_requests: boolean; can_delete_requests: boolean };
+type PermissionSet = { can_create_requests: boolean; can_edit_requests: boolean; can_move_requests: boolean; can_delete_requests: boolean; can_manage_columns: boolean };
 type AdminUser = { id: string; email: string; full_name: string; role: "owner" | "member"; approval_status: ApprovalStatus; permissions: PermissionSet };
 
 const statusLabels: Record<UserStatusFilter, string> = { all: "Todos", pending: "Pendentes", approved: "Aprovados", rejected: "Rejeitados", suspended: "Suspensos" };
 const statusColors: Record<ApprovalStatus, string> = { pending: "bg-amber-100 text-amber-800", approved: "bg-emerald-100 text-emerald-800", rejected: "bg-red-100 text-red-800", suspended: "bg-slate-200 text-slate-700" };
-const permissionLabels: [keyof PermissionSet, string][] = [["can_create_requests", "Criar"], ["can_edit_requests", "Editar"], ["can_move_requests", "Mover"], ["can_delete_requests", "Excluir"]];
+const permissionLabels: [keyof PermissionSet, string][] = [["can_create_requests", "Criar"], ["can_edit_requests", "Editar"], ["can_move_requests", "Mover"], ["can_delete_requests", "Excluir"], ["can_manage_columns", "Gerenciar colunas"]];
 
 export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
