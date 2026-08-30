@@ -14,7 +14,19 @@ describe("autenticação", () => {
     const { container } = render(<AuthLayout><p>Conteúdo</p></AuthLayout>);
 
     expect(container.querySelector(".auth-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("Solicitações")).not.toBeInTheDocument();
     expect(screen.getByText("Conteúdo")).toBeVisible();
+  });
+
+  it("repete a hierarquia e as ações do login da calculadora", async () => {
+    render(await LoginPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole("heading", { name: "Entrar" })).toHaveClass("sr-only");
+    expect(screen.queryByText("Acesse o quadro com seu e-mail e senha.")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("E-mail")).toHaveClass("calculator-login-field");
+    expect(screen.getByRole("button", { name: "Entrar" })).toHaveClass("calculator-login-primary");
+    expect(screen.getByRole("link", { name: "Esqueci minha senha" })).toHaveAttribute("href", "/forgot-password");
+    expect(screen.getByRole("link", { name: "Solicitar novo acesso" })).toHaveAttribute("href", "/register");
   });
 
   it("permite mostrar e ocultar a senha no login", async () => {
@@ -38,3 +50,4 @@ describe("AppHeader", () => {
     expect(screen.getByRole("link", { name: "Usuários" })).toBeVisible();
   });
 });
+
