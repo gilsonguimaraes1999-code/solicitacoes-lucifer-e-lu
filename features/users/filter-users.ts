@@ -1,12 +1,20 @@
 import type { ApprovalStatus } from "@/features/requests/types";
 
 export type UserStatusFilter = ApprovalStatus | "all";
+export type UserSortOrder = "asc" | "desc";
 
 export interface FilterableUser {
   id: string;
   fullName: string;
   email: string;
   approvalStatus: ApprovalStatus;
+}
+
+export function sortUsersByName<T extends Pick<FilterableUser, "fullName">>(users: T[], order: UserSortOrder): T[] {
+  return [...users].sort((left, right) => {
+    const comparison = left.fullName.localeCompare(right.fullName, "pt-BR", { sensitivity: "base" });
+    return order === "asc" ? comparison : -comparison;
+  });
 }
 
 export function filterUsersByStatus<T extends FilterableUser>(
