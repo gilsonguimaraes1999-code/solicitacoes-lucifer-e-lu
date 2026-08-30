@@ -24,7 +24,7 @@ Nunca use a service role em variável `NEXT_PUBLIC_*`, no navegador ou em logs.
 
 As colunas `Pendente`, `Em progresso` e `Concluído` são fixas. Colunas extras são opcionais, vinculadas a um único perfil aprovado. O owner sempre pode usar `Gerenciar colunas`; membros aprovados precisam de `can_manage_columns = true`.
 
-Use uma conexão direta de administrador em `SUPABASE_DB_URL`; não coloque a senha no repositório nem no histórico do shell. Antes de começar, faça o backup previsto pela política da equipe e interrompa o rollout se `npx supabase migration list` não mostrar `001`–`004` no remoto e `005`–`007` apenas no repositório local.
+Use uma conexão direta de administrador em `SUPABASE_DB_URL`; não coloque a senha no repositório nem no histórico do shell. Antes de começar, faça o backup previsto pela política da equipe e interrompa o rollout se `npx supabase migration list` não mostrar `001`–`004` no remoto e `005`–`008` apenas no repositório local.
 
 ### Fase 1 — schema aditivo e aplicação nova
 
@@ -53,7 +53,7 @@ npx supabase migration list
 npx supabase db push --linked --dry-run
 ```
 
-O `migration list` deve alinhar `001`–`006`, e o dry-run deve listar somente `202608290007_board_columns_lockdown.sql`. Se mostrar qualquer outra migration, não execute o push: confira o projeto vinculado e repare o histórico somente depois de comparar o schema real.
+O `migration list` deve alinhar `001`–`006`, e o dry-run deve listar somente `202608290007_board_columns_lockdown.sql` e `202608300008_service_role_admin_grants.sql`, nesta ordem. Se mostrar qualquer outra migration, não execute o push: confira o projeto vinculado e repare o histórico somente depois de comparar o schema real.
 
 4. Execute o preflight aditivo somente-leitura:
 
@@ -69,7 +69,7 @@ Ele exige três colunas de sistema, backfill completo, posições finitas e segu
 
 ### Fase 2 — lockdown
 
-7. Confirme novamente que somente `007` está pendente e então aplique a fila:
+7. Confirme novamente que somente `007` e `008` estão pendentes e então aplique a fila. A `008` restaura os grants server-only necessários para listar, aprovar e editar usuários:
 
 ```powershell
 npx supabase db push --linked --dry-run
@@ -77,7 +77,7 @@ npx supabase db push --linked
 npx supabase migration list
 ```
 
-Não continue se o dry-run listar algo além de `202608290007_board_columns_lockdown.sql`. Depois do push, `001`–`007` devem aparecer alinhadas no histórico local e remoto.
+Não continue se o dry-run listar algo além de `202608290007_board_columns_lockdown.sql` e `202608300008_service_role_admin_grants.sql`. Depois do push, `001`–`008` devem aparecer alinhadas no histórico local e remoto. No smoke test, aprove uma conta pendente, altere o nome e salve permissões; recarregue a página e confirme que os três valores persistiram.
 8. Repita criação e movimentação, confira logs de Vercel e Supabase para erros 4xx/5xx e confirme que Realtime não duplica colunas ou cartões. Confirme também que `authenticated` já não possui INSERT direto em `public.requests` e que `move_request(uuid,text,numeric)` não existe.
 
 Em incidente ou falha antes do lockdown, mantenha `007` sem aplicar e corrija/republique a aplicação; não marque `007` como aplicada nem use `migration repair` para esconder uma execução incompleta. O `requests.status` legado continua nulo em listas de responsável e sincronizado com a chave da coluna fixa; ele não deve ser removido nesta entrega.
