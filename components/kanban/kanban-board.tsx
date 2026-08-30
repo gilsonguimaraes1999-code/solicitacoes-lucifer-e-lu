@@ -19,6 +19,7 @@ import { positionBetween, sortRequests } from "@/features/requests/ordering";
 import { requestsReducer, type RequestsEvent } from "@/features/requests/reducer";
 import type { RequestInput } from "@/features/requests/schemas";
 import type { EffectivePermissions, Profile, RequestRecord } from "@/features/requests/types";
+import type { RequestTag } from "@/features/requests/tags";
 import { createBrowserClient } from "@/lib/supabase/browser";
 
 interface KanbanBoardProps {
@@ -78,6 +79,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
   const [selected, setSelected] = useState<RequestRecord | null | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [selectedColumn, setSelectedColumn] = useState("all");
+  const [selectedTags, setSelectedTags] = useState<RequestTag[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const selectedColumnRef = useRef("all");
   const requestsRef = useRef(sortedInitialRequests);
@@ -222,7 +224,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
     return () => { void supabase.removeChannel(channel); void supabase.removeChannel(columnsChannel); };
   }, [advanceColumnVersion, advanceRequestRealtimeVersion, advanceRequestVersion, currentRequestVersion, dispatch, dispatchColumns, isCurrentRequestRealtimeVersion, profiles]);
 
-  const filtered = useMemo(() => filterBoard(requests, selectedColumn, query), [query, requests, selectedColumn]);
+  const filtered = useMemo(() => filterBoard(requests, selectedColumn, query, selectedTags), [query, requests, selectedColumn, selectedTags]);
   const visibleColumns = selectedColumn === "all" ? columns : columns.filter((column) => column.id === selectedColumn);
   const activeDragRequest = activeDragId ? requests.find((request) => request.id === activeDragId) : undefined;
   const accessibility = useMemo(() => ({
@@ -487,7 +489,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         <BoardNotice message={message} onClose={clearMessage} />
         <div className="panel mb-5 grid gap-3 p-3">
           <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field" style={{ paddingLeft: "2.75rem" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
-          <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} />
+          <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} selectedTags={selectedTags} onTagChange={setSelectedTags} />
         </div>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={({ active }) => setActiveDragId(String(active.id))} onDragCancel={() => setActiveDragId(null)} onDragEnd={handleMove} accessibility={accessibility}>
           <div className="kanban-grid" aria-label="Quadro de listas">
