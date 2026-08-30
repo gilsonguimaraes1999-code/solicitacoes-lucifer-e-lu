@@ -1,64 +1,493 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState } from "react";
-import { DndContext, type DragEndEvent, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type DragEndEvent, type ScreenReaderInstructions } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Search, Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
+import { AddColumn } from "@/components/kanban/add-column";
+import { BoardFilters } from "@/components/kanban/board-filters";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { RequestDialog } from "@/components/requests/request-dialog";
-import { requestsReducer } from "@/features/requests/reducer";
-import { positionBetween } from "@/features/requests/ordering";
-import { createRequest, deleteRequest, moveRequest, updateRequest } from "@/features/requests/api";
-import { createBrowserClient } from "@/lib/supabase/browser";
-import type { EffectivePermissions, Profile, RequestRecord, RequestStatus } from "@/features/requests/types";
+import { createBoardColumn, deleteBoardColumn, renameBoardColumn, reorderBoardColumn } from "@/features/columns/api";
+import { columnsReducer, type ColumnsEvent } from "@/features/columns/reducer";
+import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
+import { createRequest, deleteRequest, getRequest, moveRequest, updateRequest } from "@/features/requests/api";
+import { filterBoard } from "@/features/requests/filter";
+import { positionBetween, sortRequests } from "@/features/requests/ordering";
+import { requestsReducer, type RequestsEvent } from "@/features/requests/reducer";
 import type { RequestInput } from "@/features/requests/schemas";
+import type { EffectivePermissions, Profile, RequestRecord } from "@/features/requests/types";
+import { createBrowserClient } from "@/lib/supabase/browser";
 
-const statuses: RequestStatus[] = ["pending", "in_progress", "completed"];
+interface KanbanBoardProps {
+  initialRequests: RequestRecord[];
+  initialColumns: BoardColumn[];
+  profiles: Profile[];
+  currentUserId: string;
+  permissions: EffectivePermissions;
+}
 
-export function KanbanBoard({ initialRequests, profiles, currentUserId, permissions }: { initialRequests: RequestRecord[]; profiles: Profile[]; currentUserId: string; permissions: EffectivePermissions }) {
-  const [requests, dispatch] = useReducer(requestsReducer, initialRequests);
+type MovementOutcome = "success" | "reloaded" | "rollback" | "stale" | "pending";
+type PendingOperation =
+  | { kind: "move"; token: symbol; targetColumnId: string; targetPosition: number; realtimeConfirmed: boolean }
+  | { kind: "delete"; token: symbol };
+
+const boardScreenReaderInstructions: ScreenReaderInstructions = {
+  draggable: "Para mover um cartão, pressione a barra de espaço. Use as setas para escolher o destino, pressione a barra de espaço novamente para soltar ou Escape para cancelar.",
+};
+
+function boardItemName(id: string, requests: RequestRecord[], columns: BoardColumn[]) {
+  return requests.find((request) => request.id === id)?.title
+    ?? columns.find((column) => column.id === id)?.name
+    ?? id;
+}
+
+function boardAnnouncements(requests: RequestRecord[], columns: BoardColumn[]): Announcements {
+  return {
+    onDragStart: ({ active }) => `Movimento iniciado para ${boardItemName(String(active.id), requests, columns)}.`,
+    onDragOver: ({ active, over }) => over
+      ? `${boardItemName(String(active.id), requests, columns)} está sobre ${boardItemName(String(over.id), requests, columns)}.`
+      : `${boardItemName(String(active.id), requests, columns)} está fora de uma lista.`,
+    onDragEnd: ({ active, over }) => over
+      ? `${boardItemName(String(active.id), requests, columns)} foi movido para ${boardItemName(String(over.id), requests, columns)}.`
+      : `Movimento de ${boardItemName(String(active.id), requests, columns)} encerrado sem destino.`,
+    onDragCancel: ({ active }) => `Movimento de ${boardItemName(String(active.id), requests, columns)} cancelado.`,
+  };
+}
+
+function enrichAssignee(request: RequestRecord, profiles: Profile[]): RequestRecord {
+  const profile = profiles.find((item) => item.id === request.assigned_to);
+  const returnedAssignee = request.assignee?.id === request.assigned_to ? request.assignee : null;
+  return {
+    ...request,
+    assignee: profile ? { id: profile.id, full_name: profile.full_name } : returnedAssignee,
+  };
+}
+
+function mergeCanonicalRequest(latest: RequestRecord, canonical: RequestRecord, profiles: Profile[]) {
+  return enrichAssignee({ ...latest, ...canonical }, profiles);
+}
+
+export function KanbanBoard({ initialRequests, initialColumns, profiles, currentUserId, permissions }: KanbanBoardProps) {
+  const sortedInitialRequests = useMemo(() => requestsReducer([], { type: "snapshot", requests: initialRequests }), [initialRequests]);
+  const sortedInitialColumns = useMemo(() => columnsReducer([], { type: "snapshot", columns: initialColumns }), [initialColumns]);
+  const [requests, rawDispatch] = useReducer(requestsReducer, sortedInitialRequests);
+  const [columns, rawDispatchColumns] = useReducer(columnsReducer, sortedInitialColumns);
   const [selected, setSelected] = useState<RequestRecord | null | undefined>(undefined);
   const [query, setQuery] = useState("");
-  const [assignee, setAssignee] = useState("all");
+  const [selectedColumn, setSelectedColumn] = useState("all");
+  const selectedColumnRef = useRef("all");
+  const requestsRef = useRef(sortedInitialRequests);
+  const columnsRef = useRef(sortedInitialColumns);
+  const requestVersionsRef = useRef(new Map<string, number>());
+  const requestRealtimeVersionsRef = useRef(new Map<string, number>());
+  const columnVersionsRef = useRef(new Map<string, number>());
+  const pendingOperationsRef = useRef(new Map<string, PendingOperation>());
+  const tombstonesRef = useRef(new Set<string>());
+  const columnTombstonesRef = useRef(new Set<string>());
   const [message, setMessage] = useState("");
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const dispatch = useCallback((event: RequestsEvent) => {
+    if ((event.type === "insert" || event.type === "update") && tombstonesRef.current.has(event.request.id)) return;
+    const nextRequests = requestsReducer(requestsRef.current, event);
+    requestsRef.current = nextRequests;
+    rawDispatch(event);
+    setSelected((current) => {
+      if (!current) return current;
+      if (event.type === "delete" && event.id === current.id) return undefined;
+      if (event.type === "snapshot" || ((event.type === "insert" || event.type === "update") && event.request.id === current.id)) {
+        return nextRequests.find((request) => request.id === current.id);
+      }
+      return current;
+    });
+  }, []);
+
+  const dispatchColumns = useCallback((event: ColumnsEvent) => {
+    if ((event.type === "insert" || event.type === "update") && columnTombstonesRef.current.has(event.column.id)) return;
+    const nextColumns = columnsReducer(columnsRef.current, event);
+    columnsRef.current = nextColumns;
+    rawDispatchColumns(event);
+  }, []);
+
+  const currentRequestVersion = useCallback((requestId: string) => (
+    requestVersionsRef.current.get(requestId) ?? 0
+  ), []);
+
+  const advanceRequestVersion = useCallback((requestId: string) => {
+    const version = currentRequestVersion(requestId) + 1;
+    requestVersionsRef.current.set(requestId, version);
+    return version;
+  }, [currentRequestVersion]);
+
+  const isCurrentVersion = useCallback((requestId: string, version: number) => (
+    currentRequestVersion(requestId) === version
+  ), [currentRequestVersion]);
+
+  const advanceRequestRealtimeVersion = useCallback((requestId: string) => {
+    const version = (requestRealtimeVersionsRef.current.get(requestId) ?? 0) + 1;
+    requestRealtimeVersionsRef.current.set(requestId, version);
+    return version;
+  }, []);
+
+  const isCurrentRequestRealtimeVersion = useCallback((requestId: string, version: number) => (
+    requestRealtimeVersionsRef.current.get(requestId) === version
+  ), []);
+
+  const currentColumnVersion = useCallback((columnId: string) => (
+    columnVersionsRef.current.get(columnId) ?? 0
+  ), []);
+
+  const advanceColumnVersion = useCallback((columnId: string) => {
+    const version = currentColumnVersion(columnId) + 1;
+    columnVersionsRef.current.set(columnId, version);
+    return version;
+  }, [currentColumnVersion]);
+
+  const isCurrentColumnVersion = useCallback((columnId: string, version: number) => (
+    currentColumnVersion(columnId) === version
+  ), [currentColumnVersion]);
+
+  function selectColumn(columnId: string) {
+    selectedColumnRef.current = columnId;
+    setSelectedColumn(columnId);
+  }
 
   useEffect(() => {
     const supabase = createBrowserClient();
     const channel = supabase.channel("requests-board").on("postgres_changes", { event: "*", schema: "public", table: "requests" }, async (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => {
-      if (payload.eventType === "DELETE") dispatch({ type: "delete", id: (payload.old as { id: string }).id });
-      else {
-        const { data } = await supabase.from("requests").select("*, assignee:profiles!requests_assigned_to_fkey(id,full_name)").eq("id", (payload.new as { id: string }).id).single();
-        if (data) dispatch({ type: payload.eventType === "INSERT" ? "insert" : "update", request: data as RequestRecord });
+      const requestId = payload.eventType === "DELETE"
+        ? (payload.old as { id: string }).id
+        : (payload.new as { id: string }).id;
+      if (payload.eventType === "DELETE") {
+        advanceRequestRealtimeVersion(requestId);
+        advanceRequestVersion(requestId);
+        tombstonesRef.current.add(requestId);
+        dispatch({ type: "delete", id: requestId });
+        return;
+      }
+      if (tombstonesRef.current.has(requestId)) return;
+      const eventVersion = advanceRequestRealtimeVersion(requestId);
+      const operationVersionAtReceipt = currentRequestVersion(requestId);
+      try {
+        const canonical = await getRequest(requestId);
+        if (tombstonesRef.current.has(requestId) || !isCurrentRequestRealtimeVersion(requestId, eventVersion)) return;
+        const pendingOperation = pendingOperationsRef.current.get(requestId);
+        const confirmsPendingMove = pendingOperation?.kind === "move"
+          && canonical.column_id === pendingOperation.targetColumnId
+          && canonical.position === pendingOperation.targetPosition;
+        if (currentRequestVersion(requestId) !== operationVersionAtReceipt && !confirmsPendingMove) return;
+        if (confirmsPendingMove) {
+          pendingOperation.realtimeConfirmed = true;
+        }
+        advanceRequestVersion(requestId);
+        dispatch({ type: payload.eventType === "INSERT" ? "insert" : "update", request: enrichAssignee(canonical, profiles) });
+      } catch {
+        // A próxima alteração ou operação fará uma nova tentativa de reconciliação.
       }
     }).subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, []);
 
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("pt-BR");
-    return requests.filter((request) => (assignee === "all" || request.assigned_to === assignee) && (!normalized || request.title.toLocaleLowerCase("pt-BR").includes(normalized) || request.requester_name.toLocaleLowerCase("pt-BR").includes(normalized) || request.assignee?.full_name.toLocaleLowerCase("pt-BR").includes(normalized)));
-  }, [assignee, query, requests]);
+    const columnsChannel = supabase.channel("board-columns").on("postgres_changes", { event: "*", schema: "public", table: "board_columns" }, (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => {
+      if (payload.eventType === "DELETE") {
+        const columnId = (payload.old as { id: string }).id;
+        advanceColumnVersion(columnId);
+        columnTombstonesRef.current.add(columnId);
+        dispatchColumns({ type: "delete", id: columnId });
+        if (selectedColumnRef.current === columnId) selectColumn("all");
+      } else {
+        const column = payload.new as unknown as BoardColumn;
+        if (columnTombstonesRef.current.has(column.id)) return;
+        advanceColumnVersion(column.id);
+        dispatchColumns({ type: payload.eventType === "INSERT" ? "insert" : "update", column });
+      }
+    }).subscribe();
+    return () => { void supabase.removeChannel(channel); void supabase.removeChannel(columnsChannel); };
+  }, [advanceColumnVersion, advanceRequestRealtimeVersion, advanceRequestVersion, currentRequestVersion, dispatch, dispatchColumns, isCurrentRequestRealtimeVersion, profiles]);
+
+  const filtered = useMemo(() => filterBoard(requests, selectedColumn, query), [query, requests, selectedColumn]);
+  const visibleColumns = selectedColumn === "all" ? columns : columns.filter((column) => column.id === selectedColumn);
+  const accessibility = useMemo(() => ({
+    screenReaderInstructions: boardScreenReaderInstructions,
+    announcements: boardAnnouncements(requests, columns),
+  }), [columns, requests]);
+
+  async function save(input: RequestInput) {
+    if (selected) {
+      const version = advanceRequestVersion(selected.id);
+      try {
+        const updated = await updateRequest(selected.id, input);
+        if (!isCurrentVersion(selected.id, version)) return;
+        const latest = requestsRef.current.find((request) => request.id === selected.id) ?? selected;
+        dispatch({ type: "update", request: mergeCanonicalRequest(latest, updated, profiles) });
+        setMessage("Solicitação atualizada.");
+      } catch (error) {
+        throw error;
+      }
+    } else {
+      const created = await createRequest(input, currentUserId, 1024);
+      if (tombstonesRef.current.has(created.id)) return;
+      const current = requestsRef.current.find((request) => request.id === created.id);
+      dispatch({ type: current ? "update" : "insert", request: enrichAssignee(current ?? created, profiles) });
+      setMessage("Solicitação criada.");
+    }
+  }
+
+  async function persistMovement(previous: RequestRecord, targetColumnId: string, position: number, optimistic?: RequestRecord): Promise<MovementOutcome> {
+    const requestId = previous.id;
+    const pendingOperation = pendingOperationsRef.current.get(requestId);
+    if (pendingOperation) {
+      setMessage(pendingOperation.kind === "delete"
+        ? "A exclusão desta solicitação já está em andamento."
+        : "Uma movimentação desta solicitação já está em andamento.");
+      return "pending";
+    }
+    const operationToken = Symbol("move-request");
+    pendingOperationsRef.current.set(requestId, {
+      kind: "move",
+      token: operationToken,
+      targetColumnId,
+      targetPosition: position,
+      realtimeConfirmed: false,
+    });
+    const version = advanceRequestVersion(requestId);
+    if (optimistic) dispatch({ type: "update", request: optimistic });
+
+    try {
+      const canonical = await moveRequest(requestId, targetColumnId, position);
+      if (tombstonesRef.current.has(requestId)) return "stale";
+      if (!isCurrentVersion(requestId, version)) {
+        const operation = pendingOperationsRef.current.get(requestId);
+        if (operation?.kind === "move" && operation.token === operationToken && operation.realtimeConfirmed) {
+          setMessage("Solicitação movida.");
+          return "success";
+        }
+        return "stale";
+      }
+      const latest = requestsRef.current.find((request) => request.id === requestId) ?? optimistic ?? previous;
+      dispatch({ type: "update", request: mergeCanonicalRequest(latest, canonical, profiles) });
+      setMessage("Solicitação movida.");
+      return "success";
+    } catch {
+      if (tombstonesRef.current.has(requestId)) return "stale";
+      if (!isCurrentVersion(requestId, version)) {
+        const operation = pendingOperationsRef.current.get(requestId);
+        if (operation?.kind === "move" && operation.token === operationToken && operation.realtimeConfirmed) {
+          setMessage("Solicitação movida.");
+          return "success";
+        }
+        return "stale";
+      }
+      try {
+        const canonical = await getRequest(requestId);
+        if (tombstonesRef.current.has(requestId) || !isCurrentVersion(requestId, version)) return "stale";
+        const latest = requestsRef.current.find((request) => request.id === requestId) ?? optimistic ?? previous;
+        dispatch({ type: "update", request: mergeCanonicalRequest(latest, canonical, profiles) });
+        setMessage("A movimentação não foi confirmada; o quadro foi sincronizado com o servidor.");
+        return "reloaded";
+      } catch {
+        if (tombstonesRef.current.has(requestId) || !isCurrentVersion(requestId, version)) return "stale";
+        dispatch({ type: "update", request: previous });
+        setMessage("Não foi possível mover a solicitação. O cartão voltou à posição anterior.");
+        return "rollback";
+      }
+    } finally {
+      if (pendingOperationsRef.current.get(requestId)?.token === operationToken) {
+        pendingOperationsRef.current.delete(requestId);
+      }
+    }
+  }
+
+  async function removeRequest(requestId: string) {
+    const pendingOperation = pendingOperationsRef.current.get(requestId);
+    if (pendingOperation?.kind === "move") {
+      throw new Error("Não é possível excluir enquanto uma movimentação está em andamento.");
+    }
+    if (pendingOperation) throw new Error("A exclusão desta solicitação já está em andamento.");
+
+    const operationToken = Symbol("delete-request");
+    pendingOperationsRef.current.set(requestId, { kind: "delete", token: operationToken });
+    try {
+      await deleteRequest(requestId);
+      if (!tombstonesRef.current.has(requestId)) {
+        advanceRequestVersion(requestId);
+        tombstonesRef.current.add(requestId);
+        dispatch({ type: "delete", id: requestId });
+      }
+      setMessage("Solicitação excluída.");
+    } finally {
+      if (pendingOperationsRef.current.get(requestId)?.token === operationToken) {
+        pendingOperationsRef.current.delete(requestId);
+      }
+    }
+  }
+
+  async function moveToSystem(request: RequestRecord, systemKey: SystemColumnKey) {
+    const targetColumn = columns.find((column) => column.kind === "system" && column.system_key === systemKey);
+    if (!targetColumn) throw new Error("A coluna de destino não foi encontrada.");
+
+    const latest = requestsRef.current.find((item) => item.id === request.id) ?? request;
+    const targetRequests = sortRequests(requestsRef.current.filter((item) => item.id !== request.id && item.column_id === targetColumn.id));
+    const position = positionBetween(targetRequests.at(-1)?.position);
+    const outcome = await persistMovement(latest, targetColumn.id, position);
+    if (outcome === "rollback") throw new Error("Não foi possível mover a solicitação.");
+    if (outcome === "pending") throw new Error("Uma movimentação desta solicitação já está em andamento.");
+    if (outcome === "stale") throw new Error("A solicitação foi atualizada durante a movimentação. Confira o estado atual.");
+  }
 
   async function handleMove(event: DragEndEvent) {
     if (!permissions.canMove || !event.over) return;
-    const current = requests.find((item) => item.id === event.active.id); if (!current) return;
-    const overCard = requests.find((item) => item.id === event.over!.id);
-    const targetStatus = (statuses.includes(event.over.id as RequestStatus) ? event.over.id : overCard?.status) as RequestStatus | undefined;
-    if (!targetStatus) return;
-    const column = requests.filter((item) => item.status === targetStatus && item.id !== current.id);
-    const targetIndex = overCard ? Math.max(0, column.findIndex((item) => item.id === overCard.id)) : column.length;
-    const before = column[targetIndex - 1]?.position; const after = column[targetIndex]?.position;
-    const optimistic = { ...current, status: targetStatus, position: positionBetween(before, after) };
-    dispatch({ type: "update", request: optimistic });
-    try { const updated = await moveRequest(current.id, targetStatus, optimistic.position); dispatch({ type: "update", request: { ...optimistic, ...updated } }); setMessage("Solicitação movida."); }
-    catch { dispatch({ type: "update", request: current }); setMessage("Não foi possível mover. A posição anterior foi restaurada."); }
+
+    const currentRequests = requestsRef.current;
+    const requestId = String(event.active.id);
+    const overId = String(event.over.id);
+    if (requestId === overId) return;
+
+    const previous = currentRequests.find((request) => request.id === requestId);
+    if (!previous) return;
+
+    const overColumn = columns.find((column) => column.id === overId);
+    const overCard = currentRequests.find((request) => request.id === overId);
+    const targetColumnId = overColumn?.id ?? overCard?.column_id;
+    const targetColumn = columns.find((column) => column.id === targetColumnId);
+    if (!targetColumnId || !targetColumn) return;
+
+    const targetRequests = sortRequests(currentRequests.filter((request) => request.id !== requestId && request.column_id === targetColumnId));
+    let position: number;
+    if (overCard) {
+      const overIndex = targetRequests.findIndex((request) => request.id === overCard.id);
+      if (overIndex < 0) return;
+      const translated = event.active.rect?.current?.translated;
+      const activeCenter = translated
+        ? translated.top + (typeof translated.height === "number" ? translated.height / 2 : 0)
+        : undefined;
+      const targetCenter = event.over.rect
+        ? event.over.rect.top + (typeof event.over.rect.height === "number" ? event.over.rect.height / 2 : 0)
+        : undefined;
+      const insertAfter = activeCenter !== undefined && targetCenter !== undefined
+        ? activeCenter > targetCenter
+        : false;
+      const targetIndex = overIndex + (insertAfter ? 1 : 0);
+      position = positionBetween(targetRequests[targetIndex - 1]?.position, targetRequests[targetIndex]?.position);
+    } else {
+      position = positionBetween(targetRequests.at(-1)?.position);
+    }
+
+    const optimistic: RequestRecord = {
+      ...previous,
+      column_id: targetColumnId,
+      position,
+      status: targetColumn.system_key,
+    };
+    setMessage("");
+    await persistMovement(previous, targetColumnId, position, optimistic);
   }
 
-  async function save(input: RequestInput) {
-    if (selected) { const updated = await updateRequest(selected.id, input); const profile = profiles.find((item) => item.id === input.assignedTo); dispatch({ type: "update", request: { ...selected, ...updated, assignee: profile ? { id: profile.id, full_name: profile.full_name } : null } }); setMessage("Solicitação atualizada."); }
-    else { const max = Math.max(0, ...requests.filter((item) => item.status === "pending").map((item) => item.position)); const created = await createRequest(input, currentUserId, max + 1024); dispatch({ type: "insert", request: created }); setMessage("Solicitação criada."); }
+  async function addColumn(input: { name: string; assigneeId: string }) {
+    const lastPosition = columnsRef.current.reduce((maximum, column) => Math.max(maximum, column.position), 0);
+    const created = await createBoardColumn(input.name, input.assigneeId, positionBetween(lastPosition));
+    if (columnTombstonesRef.current.has(created.id)) return;
+    const current = columnsRef.current.find((column) => column.id === created.id);
+    if (!current) {
+      advanceColumnVersion(created.id);
+      dispatchColumns({ type: "insert", column: created });
+    }
+    setMessage("Lista adicionada.");
   }
 
-  return <main className="p-4 md:p-6"><div className="mx-auto max-w-[1500px]"><header className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-extrabold">Quadro de solicitações</h1><p className="mt-1 text-sm text-slate-500">Acompanhe o trabalho da equipe em tempo real.</p></div>{permissions.canCreate && <button className="button inline-flex items-center gap-2" onClick={() => setSelected(null)}><Plus size={18} />Nova solicitação</button>}</header>{message && <button className="mb-4 w-full rounded-lg bg-blue-50 p-3 text-left text-sm text-blue-800" onClick={() => setMessage("")}>{message}</button>}<div className="panel mb-5 flex flex-wrap gap-3 p-3"><label className="relative min-w-64 flex-1"><Search className="absolute left-3 top-3 text-slate-400" size={18} /><span className="sr-only">Pesquisar</span><input className="field pl-10" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Título, solicitante ou responsável" /></label><select className="field max-w-xs" value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label="Filtrar por responsável"><option value="all">Todos os responsáveis</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name}</option>)}</select></div><DndContext sensors={sensors} onDragEnd={handleMove}><div className="grid min-w-[900px] grid-cols-3 gap-4 overflow-x-auto">{statuses.map((status) => <KanbanColumn key={status} status={status} requests={filtered.filter((item) => item.status === status)} canMove={permissions.canMove} onOpen={setSelected} />)}</div></DndContext></div>{selected !== undefined && <RequestDialog key={selected?.id ?? "new"} request={selected} profiles={profiles} canEdit={permissions.canEdit} canDelete={permissions.canDelete} onClose={() => setSelected(undefined)} onSave={save} onDelete={selected ? async () => { await deleteRequest(selected.id); dispatch({ type: "delete", id: selected.id }); setMessage("Solicitação excluída."); } : undefined} />}</main>;
+  async function renameColumn(columnId: string, name: string) {
+    const version = advanceColumnVersion(columnId);
+    const updated = await renameBoardColumn(columnId, name);
+    if (columnTombstonesRef.current.has(columnId)) return;
+    if (!isCurrentColumnVersion(columnId, version)) {
+      if (columnsRef.current.find((column) => column.id === columnId)?.name === updated.name) {
+        setMessage("Lista renomeada.");
+      }
+      return;
+    }
+    dispatchColumns({ type: "update", column: updated });
+    setMessage("Lista renomeada.");
+  }
+
+  async function reorderColumn(columnId: string, direction: "left" | "right") {
+    const currentColumns = columnsRef.current;
+    const customColumns = currentColumns.filter((column) => column.kind === "assignee");
+    const currentIndex = customColumns.findIndex((column) => column.id === columnId);
+    const targetIndex = currentIndex + (direction === "left" ? -1 : 1);
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= customColumns.length) return;
+
+    const previous = customColumns[currentIndex];
+    const maxSystemPosition = currentColumns
+      .filter((column) => column.kind === "system")
+      .reduce((maximum, column) => Math.max(maximum, column.position), 0);
+    const position = direction === "left"
+      ? positionBetween(customColumns[targetIndex - 1]?.position ?? maxSystemPosition, customColumns[targetIndex].position)
+      : positionBetween(customColumns[targetIndex].position, customColumns[targetIndex + 1]?.position);
+    const version = advanceColumnVersion(columnId);
+    dispatchColumns({ type: "update", column: { ...previous, position } });
+    setMessage("");
+
+    try {
+      const updated = await reorderBoardColumn(columnId, position);
+      if (columnTombstonesRef.current.has(columnId)) return;
+      if (!isCurrentColumnVersion(columnId, version)) {
+        if (columnsRef.current.find((column) => column.id === columnId)?.position === position) {
+          setMessage("Lista reordenada.");
+        }
+        return;
+      }
+      dispatchColumns({ type: "update", column: updated });
+      setMessage("Lista reordenada.");
+    } catch {
+      if (columnTombstonesRef.current.has(columnId)) return;
+      if (!isCurrentColumnVersion(columnId, version)) {
+        if (columnsRef.current.find((column) => column.id === columnId)?.position === position) {
+          setMessage("Lista reordenada.");
+        }
+        return;
+      }
+      dispatchColumns({ type: "update", column: previous });
+      setMessage("Não foi possível reordenar a lista. A ordem anterior foi restaurada.");
+    }
+  }
+
+  async function removeColumn(columnId: string) {
+    await deleteBoardColumn(columnId);
+    if (!columnTombstonesRef.current.has(columnId)) {
+      advanceColumnVersion(columnId);
+      columnTombstonesRef.current.add(columnId);
+      dispatchColumns({ type: "delete", id: columnId });
+    }
+    if (selectedColumnRef.current === columnId) selectColumn("all");
+    setMessage("Lista excluída.");
+  }
+
+  return (
+    <main className="p-4 md:p-6">
+      <div className="mx-auto max-w-[1500px]">
+        <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <div><h1 className="text-2xl font-extrabold">Quadro de solicitações</h1><p className="mt-1 text-sm text-slate-500">Acompanhe o trabalho da equipe em tempo real.</p></div>
+          {permissions.canCreate && <button className="button inline-flex items-center gap-2" onClick={() => setSelected(null)}><Plus size={18} />Nova solicitação</button>}
+        </header>
+        {message && <div role="status" aria-live="polite" className="mb-4 flex w-full items-center justify-between gap-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800"><span>{message}</span><button type="button" className="font-semibold" aria-label="Fechar mensagem" onClick={() => setMessage("")}>Fechar</button></div>}
+        <div className="panel mb-5 grid gap-3 p-3">
+          <label className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18} /><span className="sr-only">Pesquisar</span><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
+          <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} />
+        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMove} accessibility={accessibility}>
+          <div className="flex items-start gap-4 overflow-x-auto pb-4">
+            {visibleColumns.map((column) => {
+              const customColumns = columns.filter((item) => item.kind === "assignee");
+              const customIndex = customColumns.findIndex((item) => item.id === column.id);
+              return <KanbanColumn key={column.id} column={column} requests={filtered.filter((request) => request.column_id === column.id)} canMove={permissions.canMove} canManageColumns={permissions.canManageColumns} canMoveColumnLeft={customIndex > 0} canMoveColumnRight={customIndex >= 0 && customIndex < customColumns.length - 1} onOpen={setSelected} onRename={renameColumn} onReorder={reorderColumn} onDelete={removeColumn} />;
+            })}
+            <AddColumn columns={columns} profiles={profiles} canManageColumns={permissions.canManageColumns} onCreate={addColumn} />
+          </div>
+        </DndContext>
+      </div>
+      {selected !== undefined && <RequestDialog key={selected?.id ?? "new"} request={selected} profiles={profiles} columns={columns} canEdit={permissions.canEdit} canDelete={permissions.canDelete} canMove={permissions.canMove} onClose={() => setSelected(undefined)} onSave={save} onMoveToSystem={async (systemKey) => { if (selected) await moveToSystem(selected, systemKey); }} onDelete={selected ? async () => removeRequest(selected.id) : undefined} />}
+    </main>
+  );
 }
