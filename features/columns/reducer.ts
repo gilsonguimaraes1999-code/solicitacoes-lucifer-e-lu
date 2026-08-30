@@ -17,9 +17,9 @@ function sortColumns(columns: BoardColumn[]): BoardColumn[] {
         || left.position - right.position
         || left.id.localeCompare(right.id);
     }
-    if (left.kind === "system") return -1;
-    if (right.kind === "system") return 1;
-    return left.position - right.position || left.id.localeCompare(right.id);
+    return left.position - right.position
+      || (left.kind === "system" ? -1 : right.kind === "system" ? 1 : 0)
+      || left.id.localeCompare(right.id);
   });
 }
 
