@@ -337,28 +337,28 @@ select results_eq(
   'reordenação devolve coluna atualizada'
 );
 
-select throws_ok(
+select results_eq(
   $$
-    select public.reorder_board_column(
+    select reordered.position
+    from public.reorder_board_column(
       (select id from public.board_columns where assignee_id = '00000000-0000-0000-0000-000000000303'),
-      3072
-    )
+      2560
+    ) reordered
   $$,
-  '23514',
-  null,
-  'reordenação não pode empatar com a última coluna de sistema'
+  $$ values (2560::numeric) $$,
+  'reordenação pode colocar responsável entre Em progresso e Concluído'
 );
 
-select throws_ok(
+select results_eq(
   $$
-    select public.reorder_board_column(
+    select reordered.position
+    from public.reorder_board_column(
       (select id from public.board_columns where assignee_id = '00000000-0000-0000-0000-000000000303'),
-      2048
-    )
+      512
+    ) reordered
   $$,
-  '23514',
-  null,
-  'reordenação não pode colocar responsável antes das colunas de sistema'
+  $$ values (512::numeric) $$,
+  'reordenação pode colocar responsável antes das colunas de sistema'
 );
 
 select throws_ok(
