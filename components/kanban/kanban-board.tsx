@@ -465,19 +465,19 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
   }
 
   return (
-    <main className="p-4 md:p-6">
-      <div className="mx-auto max-w-[1500px]">
+    <main className="relative z-10 px-4 py-6 md:px-6 md:py-8">
+      <div className="mx-auto max-w-[1800px]">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
-          <div><h1 className="text-2xl font-extrabold">Quadro de solicitações</h1><p className="mt-1 text-sm text-slate-500">Acompanhe o trabalho da equipe em tempo real.</p></div>
+          <div><p className="eyebrow">Fluxo da equipe</p><h1 className="mt-1 text-3xl font-black text-white">Quadro de solicitações</h1><p className="mt-2 text-sm text-white/50">Acompanhe o trabalho da equipe em tempo real.</p></div>
           {permissions.canCreate && <button className="button inline-flex items-center gap-2" onClick={() => setSelected(null)}><Plus size={18} />Nova solicitação</button>}
         </header>
-        {message && <div role="status" aria-live="polite" className="mb-4 flex w-full items-center justify-between gap-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800"><span>{message}</span><button type="button" className="font-semibold" aria-label="Fechar mensagem" onClick={() => setMessage("")}>Fechar</button></div>}
+        {message && <div role="status" aria-live="polite" className="alert-success mb-4"><span>{message}</span><button type="button" className="font-semibold" aria-label="Fechar mensagem" onClick={() => setMessage("")}>Fechar</button></div>}
         <div className="panel mb-5 grid gap-3 p-3">
-          <label className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18} /><span className="sr-only">Pesquisar</span><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
+          <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
           <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} />
         </div>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMove} accessibility={accessibility}>
-          <div className="flex items-start gap-4 overflow-x-auto pb-4">
+          <div className="kanban-grid" aria-label="Quadro de listas">
             {visibleColumns.map((column) => {
               const customColumns = columns.filter((item) => item.kind === "assignee");
               const customIndex = customColumns.findIndex((item) => item.id === column.id);
