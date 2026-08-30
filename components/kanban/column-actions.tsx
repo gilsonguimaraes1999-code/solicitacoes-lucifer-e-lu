@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { renameColumnSchema } from "@/features/columns/schemas";
 import type { BoardColumn } from "@/features/columns/types";
 
@@ -15,6 +16,7 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -63,13 +65,15 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
   }
 
   async function remove() {
-    if (!window.confirm("Excluir esta lista? Esta ação não pode ser desfeita.")) return;
     setBusy(true);
     setError("");
     try {
       await onDelete(column.id);
+      setConfirmingDelete(false);
     } catch (caught) {
       setError(isOccupiedColumnError(caught) ? "Mova os cartões antes de excluir esta coluna." : "Não foi possível excluir a lista. Tente novamente.");
+      setConfirmingDelete(false);
+      setMenuOpen(true);
     } finally {
       setBusy(false);
     }
@@ -101,7 +105,8 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
       {error && <p role="alert" className="px-2 py-2 text-xs text-red-300">{error}</p>}
       {onReorder && <><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a esquerda`} disabled={busy || !canMoveLeft} onClick={() => void move("left")}><ChevronLeft size={16} />Mover para a esquerda</button><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a direita`} disabled={busy || !canMoveRight} onClick={() => void move("right")}><ChevronRight size={16} />Mover para a direita</button></>}
       <button type="button" className="menu-action" disabled={busy} onClick={() => { setName(column.name); setError(""); setMenuOpen(false); setRenaming(true); }}><Pencil size={15} />Renomear lista</button>
-      <button type="button" className="menu-action danger-text" disabled={busy} onClick={() => void remove()}><Trash2 size={15} />Excluir lista</button>
+      <button type="button" className="menu-action danger-text" disabled={busy} onClick={() => { setMenuOpen(false); setConfirmingDelete(true); }}><Trash2 size={15} />Excluir lista</button>
     </div>}
+    {confirmingDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da lista" title="Excluir lista?" itemName={column.name} description="A lista será removida permanentemente. Só é possível excluir listas que não possuem solicitações." busy={busy} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void remove()} />}
   </div>;
 }
