@@ -20,7 +20,21 @@ export async function GET() {
   if (authError) return NextResponse.json({ error: "Não foi possível carregar os usuários" }, { status: 500 });
   const profileMap = new Map((profiles ?? []).map((item) => [item.id, item]));
   const permissionMap = new Map((permissions ?? []).map((item) => [item.user_id, item]));
-  return NextResponse.json(authData.users.map((user) => ({ id: user.id, email: user.email ?? "", ...profileMap.get(user.id), permissions: permissionMap.get(user.id) })));
+  return NextResponse.json(authData.users.map((user) => {
+    const permission = permissionMap.get(user.id);
+    return {
+      id: user.id,
+      email: user.email ?? "",
+      ...profileMap.get(user.id),
+      permissions: {
+        can_create_requests: permission?.can_create_requests ?? false,
+        can_edit_requests: permission?.can_edit_requests ?? false,
+        can_move_requests: permission?.can_move_requests ?? false,
+        can_delete_requests: permission?.can_delete_requests ?? false,
+        can_manage_columns: permission?.can_manage_columns ?? false,
+      },
+    };
+  }));
 }
 
 export async function POST(request: Request) {
