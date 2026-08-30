@@ -13,14 +13,18 @@ export function notifySite(message: ToastMessage) {
   window.dispatchEvent(new CustomEvent(siteToastEvent, { detail: message }));
 }
 
-export function ToastNotice({ text, tone, onClose, actionLabel, onAction }: ToastMessage & { onClose: () => void; actionLabel?: string; onAction?: () => void }) {
+export function ToastNotice({ text, tone, onClose, actionLabel, onAction, placement = "fixed" }: ToastMessage & { onClose: () => void; actionLabel?: string; onAction?: () => void; placement?: "fixed" | "inline" }) {
   useEffect(() => {
     const timeout = window.setTimeout(onClose, tone === "success" ? 3000 : 6000);
     return () => window.clearTimeout(timeout);
   }, [onClose, text, tone]);
 
-  return <div role={tone === "error" ? "alert" : "status"} aria-live={tone === "error" ? "assertive" : "polite"} className={`${tone === "error" ? "alert-error" : "alert-success"} fixed bottom-6 left-1/2 z-[200] flex w-[calc(100%_-_2rem)] max-w-[30rem] -translate-x-1/2 items-center justify-between gap-4 shadow-2xl shadow-black/60`}>
-    <span>{text}</span>
+  const position = placement === "fixed"
+    ? "fixed bottom-6 left-1/2 z-[200] w-[calc(100%_-_2rem)] -translate-x-1/2"
+    : "relative mx-auto mt-5 w-full";
+
+  return <div role={tone === "error" ? "alert" : "status"} aria-live={tone === "error" ? "assertive" : "polite"} className={`${tone === "error" ? "alert-error" : "alert-success"} ${position} flex max-w-[30rem] items-start justify-between gap-4 shadow-2xl shadow-black/60`}>
+    <span className="min-w-0 break-words">{text}</span>
     <span className="flex shrink-0 items-center gap-3">
       {actionLabel && onAction && <button type="button" className="font-semibold" onClick={() => { onClose(); onAction(); }}>{actionLabel}</button>}
       <button type="button" aria-label="Fechar mensagem" onClick={onClose}><X size={16} /></button>
@@ -47,4 +51,3 @@ export function SiteToastProvider({ children }: { children: React.ReactNode }) {
 
   return <>{children}{current && <ToastNotice key={current.id} text={current.text} tone={current.tone} onClose={closeCurrent} />}</>;
 }
-
