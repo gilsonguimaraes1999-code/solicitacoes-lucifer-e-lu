@@ -14,18 +14,26 @@ async function authorizeOwner() {
 export async function GET() {
   if (!await authorizeOwner()) return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
   const admin = createAdminClient();
-  const [{ data: authData, error: authError }, { data: profiles }, { data: permissions }] = await Promise.all([
+  const [{ data: authData, error: authError }, { data: profiles, error: profilesError }, { data: permissions, error: permissionsError }] = await Promise.all([
     admin.auth.admin.listUsers({ page: 1, perPage: 1000 }), admin.from("profiles").select("*").order("created_at", { ascending: false }), admin.from("user_permissions").select("*"),
   ]);
   if (authError) return NextResponse.json({ error: "Não foi possível carregar os usuários" }, { status: 500 });
+  if (profilesError) return NextResponse.json({ error: "Não foi possível carregar os perfis dos usuários." }, { status: 500 });
+  if (permissionsError) return NextResponse.json({ error: "Não foi possível carregar as permissões dos usuários." }, { status: 500 });
   const profileMap = new Map((profiles ?? []).map((item) => [item.id, item]));
   const permissionMap = new Map((permissions ?? []).map((item) => [item.user_id, item]));
+  const missingProfile = authData.users.find((user) => !profileMap.has(user.id));
+  if (missingProfile) return NextResponse.json({ error: `A conta ${missingProfile.email ?? missingProfile.id} está sem perfil. Restaure o perfil antes de administrá-la.` }, { status: 409 });
   return NextResponse.json(authData.users.map((user) => {
+    const profile = profileMap.get(user.id);
     const permission = permissionMap.get(user.id);
     return {
       id: user.id,
       email: user.email ?? "",
-      ...profileMap.get(user.id),
+      created_at: user.created_at,
+      full_name: profile?.full_name ?? user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "Usuário",
+      role: profile?.role ?? "member",
+      approval_status: profile?.approval_status ?? "pending",
       permissions: {
         can_create_requests: permission?.can_create_requests ?? false,
         can_edit_requests: permission?.can_edit_requests ?? false,
