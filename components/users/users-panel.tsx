@@ -1,35 +1,146 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect -- the effect owns the initial remote fetch and realtime subscription. */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, UserPlus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownAZ, ArrowUpAZ, Check, Pencil, RotateCw, Search, UserPlus, X } from "lucide-react";
+import { CreateUserDialog } from "@/components/users/create-user-dialog";
+import { UserEditor } from "@/components/users/user-editor";
+import { filterUsersByStatus, sortUsersByName, type UserSortOrder, type UserStatusFilter } from "@/features/users/filter-users";
+import type { AdminUser, UserEditorValue } from "@/features/users/types";
 import { createBrowserClient } from "@/lib/supabase/browser";
-import { filterUsersByStatus, type UserStatusFilter } from "@/features/users/filter-users";
-import type { ApprovalStatus } from "@/features/requests/types";
-
-type PermissionSet = { can_create_requests: boolean; can_edit_requests: boolean; can_move_requests: boolean; can_delete_requests: boolean; can_manage_columns: boolean };
-type AdminUser = { id: string; email: string; full_name: string; role: "owner" | "member"; approval_status: ApprovalStatus; permissions: PermissionSet };
 
 const statusLabels: Record<UserStatusFilter, string> = { all: "Todos", pending: "Pendentes", approved: "Aprovados", rejected: "Rejeitados", suspended: "Suspensos" };
-const statusColors: Record<ApprovalStatus, string> = { pending: "bg-amber-100 text-amber-800", approved: "bg-emerald-100 text-emerald-800", rejected: "bg-red-100 text-red-800", suspended: "bg-slate-200 text-slate-700" };
-const permissionLabels: [keyof PermissionSet, string][] = [["can_create_requests", "Criar"], ["can_edit_requests", "Editar"], ["can_move_requests", "Mover"], ["can_delete_requests", "Excluir"], ["can_manage_columns", "Gerenciar colunas"]];
+const statusClasses: Record<AdminUser["approval_status"], string> = { pending: "status-pending", approved: "status-approved", rejected: "status-rejected", suspended: "status-suspended" };
+
+async function responseError(response: Response, fallback: string) {
+  const data = await response.json().catch(() => ({})) as { error?: string };
+  return data.error ?? fallback;
+}
 
 export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [status, setStatus] = useState<UserStatusFilter>("all");
   const [query, setQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<UserSortOrder>("asc");
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [editing, setEditing] = useState<AdminUser | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
 
-  const load = useCallback(async () => { const response = await fetch("/api/admin/users", { cache: "no-store" }); if (response.ok) setUsers(await response.json()); else setMessage("Não foi possível carregar os usuários."); setLoading(false); }, []);
-  useEffect(() => { void load(); const supabase = createBrowserClient(); const channel = supabase.channel("admin-users").on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load).on("postgres_changes", { event: "*", schema: "public", table: "user_permissions" }, load).subscribe(); return () => { void supabase.removeChannel(channel); }; }, [load]);
+  const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/users", { cache: "no-store" });
+      if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar os usuários."));
+      const nextUsers = await response.json() as AdminUser[];
+      if (generation === loadGeneration.current) setUsers(nextUsers);
+    } catch (caught) {
+      if (generation === loadGeneration.current) setError(caught instanceof Error ? caught.message : "Não foi possível carregar os usuários.");
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
+  }, []);
 
-  const counts = useMemo(() => ({ all: users.length, pending: users.filter((u) => u.approval_status === "pending").length, approved: users.filter((u) => u.approval_status === "approved").length, rejected: users.filter((u) => u.approval_status === "rejected").length, suspended: users.filter((u) => u.approval_status === "suspended").length }), [users]);
-  const filtered = useMemo(() => filterUsersByStatus(users.map((user) => ({ ...user, fullName: user.full_name, approvalStatus: user.approval_status })), status, query), [query, status, users]);
+  useEffect(() => {
+    void load();
+    const supabase = createBrowserClient();
+    const channel = supabase.channel("admin-users")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_permissions" }, load)
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [load]);
 
-  async function updateUser(id: string, body: object) { const response = await fetch(`/api/admin/users/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); const data = await response.json(); if (!response.ok) { setMessage(data.error ?? "Não foi possível atualizar."); return; } setMessage("Usuário atualizado."); await load(); }
-  async function create(formData: FormData) { const response = await fetch("/api/admin/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(formData)) }); if (!response.ok) { setMessage("Não foi possível criar a conta."); return; } setShowCreate(false); setMessage("Conta criada com senha temporária."); await load(); }
+  const counts = useMemo(() => ({
+    all: users.length,
+    pending: users.filter((user) => user.approval_status === "pending").length,
+    approved: users.filter((user) => user.approval_status === "approved").length,
+    rejected: users.filter((user) => user.approval_status === "rejected").length,
+    suspended: users.filter((user) => user.approval_status === "suspended").length,
+  }), [users]);
+  const filtered = useMemo(() => sortUsersByName(filterUsersByStatus(users.map((user) => ({ ...user, fullName: user.full_name, approvalStatus: user.approval_status })), status, query), sortOrder), [query, sortOrder, status, users]);
 
-  return <main className="p-4 md:p-6"><div className="mx-auto max-w-6xl"><header className="flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-extrabold">Gerenciar usuários</h1><p className="mt-1 text-sm text-slate-500">Aprovações, status e permissões individuais.</p></div><button className="button inline-flex items-center gap-2" onClick={() => setShowCreate(!showCreate)}><UserPlus size={18} />Criar conta</button></header>{message && <button className="mt-4 w-full rounded-lg bg-blue-50 p-3 text-left text-sm text-blue-800" onClick={() => setMessage("")}>{message}</button>}{showCreate && <form action={create} className="panel mt-5 grid gap-3 p-4 md:grid-cols-4"><label className="label">Nome<input className="field" name="fullName" required /></label><label className="label">E-mail<input className="field" name="email" type="email" required /></label><label className="label">Senha temporária<input className="field" name="password" type="password" minLength={8} required /></label><button className="button self-end">Criar usuário</button></form>}<section className="panel mt-5 p-4"><div className="flex flex-wrap gap-2" aria-label="Filtrar usuários por status">{(Object.keys(statusLabels) as UserStatusFilter[]).map((item) => <button key={item} onClick={() => setStatus(item)} className={`rounded-full px-3 py-2 text-sm font-semibold ${status === item ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}>{statusLabels[item]} <span className="ml-1 opacity-75">{counts[item]}</span></button>)}</div><label className="relative mt-4 block"><Search className="absolute left-3 top-3 text-slate-400" size={18} /><span className="sr-only">Pesquisar usuários</span><input className="field pl-10" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar por nome ou e-mail" /></label></section><div className="mt-5 grid gap-3">{loading ? [1,2,3].map((n) => <div key={n} className="h-36 animate-pulse rounded-2xl bg-slate-200" />) : filtered.map((user) => <article key={user.id} className="panel p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold">{user.full_name}</h2><span className={`badge ${statusColors[user.approval_status]}`}>{statusLabels[user.approval_status]}</span>{user.role === "owner" && <span className="badge bg-violet-100 text-violet-800">Owner</span>}</div><p className="mt-1 text-sm text-slate-500">{user.email}</p></div><div className="flex flex-wrap gap-2">{user.approval_status !== "approved" && <button className="button" onClick={() => updateUser(user.id, { action: "status", approvalStatus: "approved" })}>Aprovar</button>}{user.approval_status !== "rejected" && user.id !== currentUserId && <button className="button secondary" onClick={() => updateUser(user.id, { action: "status", approvalStatus: "rejected" })}>Rejeitar</button>}{user.approval_status !== "suspended" && user.id !== currentUserId && <button className="button danger" onClick={() => updateUser(user.id, { action: "status", approvalStatus: "suspended" })}>Suspender</button>}</div></div><div className="mt-4 flex flex-wrap gap-4 border-t border-slate-100 pt-4">{permissionLabels.map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={user.role === "owner" || Boolean(user.permissions?.[key])} disabled={user.role === "owner"} onChange={(event) => updateUser(user.id, { action: "permissions", permissions: { ...user.permissions, [key]: event.target.checked } })} />{label}</label>)}</div></article>)}{!loading && filtered.length === 0 && <div className="panel p-10 text-center text-slate-500">Nenhum usuário encontrado com estes filtros.</div>}</div></div></main>;
+  async function patchUser(id: string, body: object) {
+    const response = await fetch(`/api/admin/users/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível atualizar o usuário."));
+  }
+
+  async function saveUser(id: string, value: UserEditorValue) {
+    const current = users.find((user) => user.id === id);
+    if (!current) throw new Error("Usuário não encontrado. Atualize a página e tente novamente.");
+    let savedSteps = 0;
+    try {
+      if (value.fullName !== current.full_name) { await patchUser(id, { action: "rename", fullName: value.fullName }); savedSteps += 1; }
+      if (current.role !== "owner" && value.approvalStatus !== current.approval_status) { await patchUser(id, { action: "status", approvalStatus: value.approvalStatus }); savedSteps += 1; }
+      if (current.role !== "owner") { await patchUser(id, { action: "permissions", permissions: value.permissions }); savedSteps += 1; }
+    } catch (caught) {
+      await load();
+      if (savedSteps > 0) throw new Error("Algumas alterações foram salvas, mas a operação não terminou. Os dados atuais foram recarregados; revise-os antes de tentar novamente.");
+      throw caught;
+    }
+    await load();
+    setEditing(null);
+    setNotice("Alterações salvas com sucesso.");
+  }
+
+  async function approve(user: AdminUser) {
+    setApprovingId(user.id);
+    setError("");
+    try {
+      await patchUser(user.id, { action: "status", approvalStatus: "approved" });
+      await load();
+      setNotice(`Conta de ${user.full_name} aprovada.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível aprovar a conta.");
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  async function createUser(value: { fullName: string; email: string; password: string }) {
+    const response = await fetch("/api/admin/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) });
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível criar a conta."));
+    await load();
+    setShowCreate(false);
+    setNotice("Conta criada com senha temporária.");
+  }
+
+  return <main className="relative z-10 px-4 py-6 md:px-6 md:py-8">
+    <div className="mx-auto max-w-[1600px]">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div><p className="eyebrow">Administração</p><h1 className="mt-1 text-3xl font-black text-white">Usuários e permissões</h1><p className="mt-2 text-sm text-white/55">Aprove acessos e defina o que cada pessoa pode fazer.</p></div>
+        <button className="button inline-flex items-center gap-2" onClick={() => setShowCreate(true)}><UserPlus size={18} />Nova conta</button>
+      </header>
+
+      {notice && <div role="status" className="alert-success mt-5"><span className="inline-flex items-center gap-2"><Check size={17} />{notice}</span><button type="button" aria-label="Fechar mensagem" onClick={() => setNotice("")}><X size={16} /></button></div>}
+      {error && <div role="alert" className="alert-error mt-5 flex items-center justify-between gap-3"><span>{error}</span><button type="button" className="inline-flex items-center gap-1 font-semibold" onClick={() => void load()}><RotateCw size={15} />Tentar novamente</button></div>}
+
+      <section className="panel mt-5 p-4 sm:p-5">
+        <div className="flex flex-wrap gap-2" aria-label="Filtrar usuários por status">{(Object.keys(statusLabels) as UserStatusFilter[]).map((item) => <button key={item} type="button" aria-pressed={status === item} onClick={() => setStatus(item)} className={`filter-chip ${status === item ? "active" : ""}`}>{statusLabels[item]} <span>{counts[item]}</span></button>)}</div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <label className="relative flex-1"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar usuários</span><input className="field pl-10 pr-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar por nome ou e-mail" />{query && <button type="button" aria-label="Limpar pesquisa" className="absolute right-3 top-3 text-white/45 hover:text-white" onClick={() => setQuery("")}><X size={18} /></button>}</label>
+          <button type="button" className="button secondary inline-flex items-center justify-center gap-2" onClick={() => setSortOrder((current) => current === "asc" ? "desc" : "asc")}>{sortOrder === "asc" ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}{sortOrder === "asc" ? "A–Z" : "Z–A"}</button>
+        </div>
+      </section>
+
+      <section className="panel mt-5 overflow-hidden" aria-label="Lista de usuários">
+        <div className="hidden grid-cols-[minmax(220px,1.4fr)_minmax(210px,1fr)_150px_130px_88px] gap-4 border-b border-white/10 px-5 py-3 text-xs font-bold uppercase tracking-[.14em] text-white/40 lg:grid"><span>Usuário</span><span>E-mail</span><span>Perfil</span><span>Status</span><span className="sr-only">Ações</span></div>
+        {loading ? <div className="grid gap-2 p-4">{[1,2,3].map((number) => <div key={number} className="h-20 animate-pulse rounded-xl bg-white/5" />)}</div> : filtered.map((user) => <article key={user.id} className="user-row">
+          <div className="min-w-0"><div className="flex items-center gap-3"><span className="avatar">{user.full_name.slice(0, 1).toUpperCase()}</span><div className="min-w-0"><h2 className="truncate font-semibold text-white">{user.full_name}</h2>{user.id === currentUserId && <p className="text-xs text-gold-soft">Sua conta</p>}</div></div></div>
+          <p className="min-w-0 truncate text-sm text-white/55">{user.email}</p>
+          <span className="w-fit rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/70">{user.role === "owner" ? "Owner" : "Membro"}</span>
+          <span className={`status-badge ${statusClasses[user.approval_status]}`}>{statusLabels[user.approval_status]}</span>
+          <div className="flex justify-end gap-2">{user.approval_status !== "approved" && <button type="button" className="icon-button text-emerald-300" aria-label={`Aprovar ${user.full_name}`} disabled={approvingId === user.id} onClick={() => void approve(user)}><Check size={17} /></button>}<button type="button" className="icon-button" aria-label={`Editar ${user.full_name}`} onClick={() => setEditing(user)}><Pencil size={17} /></button></div>
+        </article>)}
+        {!loading && filtered.length === 0 && <div className="p-12 text-center text-white/45">Nenhum usuário encontrado com estes filtros.</div>}
+      </section>
+    </div>
+    {editing && <UserEditor user={editing} onClose={() => setEditing(null)} onSave={saveUser} />}
+    {showCreate && <CreateUserDialog onClose={() => setShowCreate(false)} onCreate={createUser} />}
+  </main>;
 }
