@@ -13,8 +13,8 @@ const columns: BoardColumn[] = [
 ];
 
 const requests: RequestRecord[] = [
-  { id: "request-1", title: "Pedido de acesso", description: null, requester_name: "Mariana", assigned_to: "assignee-z", external_url: null, status: "pending", column_id: "assignee-z", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-z", full_name: "Lucifer" } },
-  { id: "request-2", title: "Outro cartão", description: null, requester_name: "Pedro", assigned_to: "assignee-a", external_url: null, status: "completed", column_id: "completed", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-a", full_name: "Ana" } },
+  { id: "request-1", title: "Pedido de acesso", description: null, requester_name: "Mariana", assigned_to: "assignee-z", external_url: null, tags: ["loja", "growth"], status: "pending", column_id: "assignee-z", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-z", full_name: "Lucifer" } },
+  { id: "request-2", title: "Outro cartão", description: null, requester_name: "Pedro", assigned_to: "assignee-a", external_url: null, tags: ["jogo"], status: "completed", column_id: "completed", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-a", full_name: "Ana" } },
 ];
 
 describe("columnsReducer", () => {
@@ -65,5 +65,11 @@ describe("filterBoard", () => {
     expect(filterBoard(requests, "assignee-z", "pedido")).toEqual([requests[0]]);
     expect(filterBoard(requests, "all", "  lUcIfEr ")).toEqual([requests[0]]);
     expect(filterBoard(requests, "completed", "Mariana")).toEqual([]);
+  });
+
+  it("combina coluna, pesquisa e qualquer uma das tags selecionadas", () => {
+    expect(filterBoard(requests, "all", "", ["growth", "jogo"])).toEqual(requests);
+    expect(filterBoard(requests, "assignee-z", "lucifer", ["loja"])).toEqual([requests[0]]);
+    expect(filterBoard(requests, "completed", "", ["growth"])).toEqual([]);
   });
 });

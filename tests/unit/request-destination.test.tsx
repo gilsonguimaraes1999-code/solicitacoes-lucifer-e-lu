@@ -24,6 +24,7 @@ const request: RequestRecord = {
   requester_name: "Ana",
   assigned_to: profiles[0].id,
   external_url: null,
+  tags: ["loja"],
   status: null,
   column_id: "column-lucifer",
   position: 1024,
@@ -96,6 +97,36 @@ describe("RequestDialog destination", () => {
     rerender(<RequestDialog {...baseProps} request={remoteRequest} />);
 
     expect(screen.getByLabelText("Responsável")).toHaveValue(profiles[1].id);
+  });
+});
+
+describe("RequestDialog tags", () => {
+  it("exige uma tag e envia todas as tags selecionadas", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={null} onSave={onSave} />);
+    fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
+    fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    expect(await screen.findByText("Selecione pelo menos uma tag.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tag Growth" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ tags: ["loja", "growth"] })));
+  });
+
+  it("permite trocar as tags ao editar", () => {
+    render(<RequestDialog {...baseProps} request={request} />);
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(screen.getByRole("button", { name: "Tag Loja" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tag Jogo" }));
+    expect(screen.getByRole("button", { name: "Tag Loja" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Tag Jogo" })).toHaveAttribute("aria-pressed", "true");
   });
 });
 

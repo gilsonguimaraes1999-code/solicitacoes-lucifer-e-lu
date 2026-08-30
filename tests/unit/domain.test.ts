@@ -16,9 +16,17 @@ describe("positionBetween", () => {
 
 describe("requestSchema", () => {
   it("aceita apenas links http ou https", () => {
-    const base = { title: "Solicitação", requesterName: "João", assignedTo: crypto.randomUUID() };
+    const base = { title: "Solicitação", requesterName: "João", assignedTo: crypto.randomUUID(), tags: ["f1"] };
     expect(requestSchema.safeParse({ ...base, externalUrl: "javascript:alert(1)" }).success).toBe(false);
     expect(requestSchema.safeParse({ ...base, externalUrl: "https://example.com" }).success).toBe(true);
+  });
+
+  it("exige ao menos uma tag válida e não aceita repetições", () => {
+    const base = { title: "Solicitação", requesterName: "João", assignedTo: crypto.randomUUID() };
+    expect(requestSchema.safeParse({ ...base, tags: [] }).success).toBe(false);
+    expect(requestSchema.safeParse({ ...base, tags: ["f1", "growth"] }).success).toBe(true);
+    expect(requestSchema.safeParse({ ...base, tags: ["f1", "f1"] }).success).toBe(false);
+    expect(requestSchema.safeParse({ ...base, tags: ["inexistente"] }).success).toBe(false);
   });
 });
 

@@ -34,8 +34,8 @@ const columns: BoardColumn[] = [
 ];
 
 const requests: RequestRecord[] = [
-  { id: "request-1", title: "Pedido pendente", description: null, requester_name: "Ana", assigned_to: "profile-lucifer", external_url: null, status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
-  { id: "request-2", title: "Pedido do responsável", description: null, requester_name: "Bruno", assigned_to: "profile-lucifer", external_url: null, status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+  { id: "request-1", title: "Pedido pendente", description: null, requester_name: "Ana", assigned_to: "profile-lucifer", external_url: null, tags: [], status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+  { id: "request-2", title: "Pedido do responsável", description: null, requester_name: "Bruno", assigned_to: "profile-lucifer", external_url: null, tags: [], status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
 ];
 
 const permissions: EffectivePermissions = { canCreate: false, canEdit: false, canMove: false, canDelete: false, canManageColumns: false };
@@ -228,4 +228,3 @@ describe("KanbanBoard", () => {
     expect(screen.queryByRole("heading", { level: 2, name: "Lucifer" })).not.toBeInTheDocument();
   });
 });
-

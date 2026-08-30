@@ -92,6 +92,7 @@ const sourceRequest: RequestRecord = {
   requester_name: "Ana",
   assigned_to: profiles[0].id,
   external_url: null,
+  tags: ["hub"],
   status: null,
   column_id: "column-lucifer",
   position: 4096,
@@ -605,9 +606,10 @@ describe("KanbanBoard save routing", () => {
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
     fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Mariana" } });
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
-    await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledWith({ title: "Nova demanda", description: "", requesterName: "Mariana", assignedTo: profiles[0].id, externalUrl: "" }, "owner", 1024));
+    await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledWith({ title: "Nova demanda", description: "", requesterName: "Mariana", assignedTo: profiles[0].id, externalUrl: "", tags: ["hub"] }, "owner", 1024));
     expect(boardRequests("Lucifer").getByRole("button", { name: "Nova demanda" })).toBeInTheDocument();
     expect(boardRequests("Lucifer").getByText("Lucifer", { selector: "span" })).toBeInTheDocument();
     const notice = await screen.findByText("Solicitação criada.");
@@ -627,7 +629,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
     await waitFor(() => expect(mocks.updateRequest).toHaveBeenCalled());
-    expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument();
+    await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
     expect(boardRequests("Pendente").getByText("Bruno")).toBeInTheDocument();
   });
 
@@ -679,6 +681,7 @@ describe("KanbanBoard save routing", () => {
       requesterName: "Solicitante remoto",
       assignedTo: profiles[1].id,
       externalUrl: "https://example.com/remoto",
+      tags: ["hub"],
     }));
   });
 
@@ -695,6 +698,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Versão RPC" } });
     fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Mariana" } });
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledOnce());
 
@@ -721,6 +725,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Resposta atrasada" } });
     fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Mariana" } });
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledOnce());
 

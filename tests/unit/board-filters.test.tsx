@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardFilters } from "@/components/kanban/board-filters";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import type { BoardColumn } from "@/features/columns/types";
@@ -13,9 +13,11 @@ const columns: BoardColumn[] = [
 ];
 
 const requests: RequestRecord[] = [
-  { id: "request-1", title: "Primeiro", description: null, requester_name: "Ana", assigned_to: "profile-lucifer", external_url: null, status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
-  { id: "request-2", title: "Segundo", description: null, requester_name: "Bruno", assigned_to: "profile-lucifer", external_url: null, status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+  { id: "request-1", title: "Primeiro", description: null, requester_name: "Ana", assigned_to: "profile-lucifer", external_url: null, tags: ["hub", "outros"], status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+  { id: "request-2", title: "Segundo", description: null, requester_name: "Bruno", assigned_to: "profile-lucifer", external_url: null, tags: ["jogo"], status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
 ];
+
+afterEach(cleanup);
 
 describe("BoardFilters", () => {
   it("exibe todos os chips com contagens por column_id e troca o filtro selecionado", () => {
@@ -29,6 +31,16 @@ describe("BoardFilters", () => {
     expect(screen.getByRole("button", { name: "Concluído (0)" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Lucifer (1)" }));
     expect(onChange).toHaveBeenCalledWith("column-lucifer");
+  });
+
+  it("exibe contagens de tags e permite selecionar várias", () => {
+    const onTagChange = vi.fn();
+    render(<BoardFilters columns={columns} requests={requests} selected="all" onChange={vi.fn()} selectedTags={["hub"]} onTagChange={onTagChange} />);
+
+    expect(screen.getByRole("button", { name: /HUB.*1/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Jogo.*1/ })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: /Jogo.*1/ }));
+    expect(onTagChange).toHaveBeenCalledWith(["hub", "jogo"]);
   });
 });
 
@@ -52,5 +64,14 @@ describe("KanbanColumn", () => {
 
     fireEvent.click(card);
     expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  it("mostra somente os ícones das tags no cartão", () => {
+    render(<KanbanColumn column={columns[3]} requests={[requests[0]]} canMove={false} canManageColumns={false} onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.getByLabelText("Tag HUB")).toHaveTextContent("⚙️");
+    expect(screen.getByLabelText("Tag Outros")).toHaveTextContent("🔁");
+    expect(screen.queryByText("HUB")).not.toBeInTheDocument();
+    expect(screen.queryByText("Outros")).not.toBeInTheDocument();
   });
 });

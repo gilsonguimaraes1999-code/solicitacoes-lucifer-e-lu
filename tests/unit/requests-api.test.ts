@@ -21,6 +21,7 @@ const created = {
   requester_name: "Mariana",
   assigned_to: "22222222-2222-4222-8222-222222222222",
   external_url: null,
+  tags: ["f1", "growth"],
   status: "pending" as const,
   column_id: "33333333-3333-4333-8333-333333333333",
   position: 1024,
@@ -37,7 +38,8 @@ describe("createRequest", () => {
   it("retorna imediatamente a linha confirmada pela RPC sem segunda leitura", async () => {
     mocks.rpc.mockResolvedValue({ data: created, error: null });
 
-    await expect(createRequest({ title: "Pedido de acesso", requesterName: "Mariana", assignedTo: created.assigned_to }, created.created_by, 1024)).resolves.toEqual(created);
+    await expect(createRequest({ title: "Pedido de acesso", requesterName: "Mariana", assignedTo: created.assigned_to, tags: ["f1", "growth"] }, created.created_by, 1024)).resolves.toEqual(created);
+    expect(mocks.rpc).toHaveBeenCalledWith("create_request", expect.objectContaining({ new_tags: ["f1", "growth"] }));
     expect(mocks.from).not.toHaveBeenCalled();
   });
 });

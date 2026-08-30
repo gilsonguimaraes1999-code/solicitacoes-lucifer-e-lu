@@ -11,6 +11,7 @@ const card: RequestRecord = {
   requester_name: "Pessoa",
   assigned_to: "22222222-2222-4222-8222-222222222222",
   external_url: null,
+  tags: [],
   status: "pending",
   column_id: "44444444-4444-4444-8444-444444444444",
   position: 1024,
