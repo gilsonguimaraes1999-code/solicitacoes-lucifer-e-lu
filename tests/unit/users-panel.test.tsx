@@ -37,6 +37,24 @@ describe("UsersPanel", () => {
     expect(screen.getByPlaceholderText("Pesquisar por nome ou e-mail")).toHaveStyle({ paddingLeft: "2.75rem" });
     vi.unstubAllGlobals();
   });
+
+  it("fecha a edição sem exibir a faixa persistente de alterações salvas", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith("/api/admin/users/") && init?.method === "PATCH") return { ok: true, json: async () => ({ ok: true }) };
+      return { ok: true, json: async () => [member] };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<UsersPanel currentUserId="owner-id" />);
+
+    await screen.findByText("Lua");
+    fireEvent.click(screen.getByRole("button", { name: "Editar Lua" }));
+    fireEvent.change(screen.getByLabelText("Nome completo"), { target: { value: "Lua Silva" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Editar usuário" })).not.toBeInTheDocument());
+    expect(screen.queryByText("Alterações salvas com sucesso.")).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("UserEditor", () => {
@@ -57,11 +75,26 @@ describe("UserEditor", () => {
   });
 
   it("mantém status e permissões nativas do owner protegidos", () => {
-    render(<UserEditor user={{ ...member, id: "owner-id", role: "owner", approval_status: "approved" }} onClose={vi.fn()} onSave={vi.fn()} />);
+    render(<UserEditor user={{ ...member, id: "owner-id", role: "owner", approval_status: "approved" }} onClose={vi.fn()} onSave={vi.fn()} onDelete={vi.fn()} />);
 
     expect(screen.getByLabelText("Status da conta")).toBeDisabled();
     expect(screen.getByLabelText("Criar solicitações")).toBeChecked();
     expect(screen.getByLabelText("Criar solicitações")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Excluir conta" })).not.toBeInTheDocument();
+  });
+
+  it("confirma a exclusão de uma conta de membro com nome e e-mail", async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    render(<UserEditor user={member} onClose={vi.fn()} onSave={vi.fn()} onDelete={onDelete} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir conta" }));
+
+    expect(screen.getByRole("dialog", { name: "Confirmar exclusão da conta" })).toHaveTextContent("Lua");
+    expect(screen.getByRole("dialog", { name: "Confirmar exclusão da conta" })).toHaveTextContent("lua@example.com");
+    expect(onDelete).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("member-id"));
   });
 });
 

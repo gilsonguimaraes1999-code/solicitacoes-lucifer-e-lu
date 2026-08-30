@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   targetSelect: vi.fn(),
   targetEq: vi.fn(),
   targetMaybeSingle: vi.fn(),
+  rpc: vi.fn(),
+  deleteUser: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -23,10 +25,10 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ from: mocks.adminFrom }),
+  createAdminClient: () => ({ from: mocks.adminFrom, rpc: mocks.rpc, auth: { admin: { deleteUser: mocks.deleteUser } } }),
 }));
 
-import { PATCH } from "@/app/api/admin/users/[id]/route";
+import { DELETE, PATCH } from "@/app/api/admin/users/[id]/route";
 
 describe("PATCH /api/admin/users/[id]", () => {
   beforeEach(() => {
@@ -42,6 +44,8 @@ describe("PATCH /api/admin/users/[id]", () => {
     mocks.targetMaybeSingle.mockResolvedValue({ data: { id: "member-id", role: "member" }, error: null });
     mocks.targetEq.mockReturnValue({ maybeSingle: mocks.targetMaybeSingle });
     mocks.targetSelect.mockReturnValue({ eq: mocks.targetEq });
+    mocks.rpc.mockResolvedValue({ error: null });
+    mocks.deleteUser.mockResolvedValue({ error: null });
     mocks.adminFrom.mockImplementation((table: string) => table === "profiles"
       ? { select: mocks.targetSelect, update: mocks.update }
       : { upsert: mocks.upsert });
@@ -99,5 +103,50 @@ describe("PATCH /api/admin/users/[id]", () => {
 
     expect(response.status).toBe(404);
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/admin/users/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "owner-id" } } });
+    mocks.profileSingle.mockResolvedValue({ data: { role: "owner", approval_status: "approved" } });
+    mocks.profileEq.mockReturnValue({ single: mocks.profileSingle });
+    mocks.profileSelect.mockReturnValue({ eq: mocks.profileEq });
+    mocks.sessionFrom.mockReturnValue({ select: mocks.profileSelect });
+    mocks.targetMaybeSingle.mockResolvedValue({ data: { id: "member-id", role: "member" }, error: null });
+    mocks.targetEq.mockReturnValue({ maybeSingle: mocks.targetMaybeSingle });
+    mocks.targetSelect.mockReturnValue({ eq: mocks.targetEq });
+    mocks.adminFrom.mockReturnValue({ select: mocks.targetSelect });
+    mocks.rpc.mockResolvedValue({ error: null });
+    mocks.deleteUser.mockResolvedValue({ error: null });
+  });
+
+  it("protege toda conta owner contra exclusão", async () => {
+    mocks.targetMaybeSingle.mockResolvedValue({ data: { id: "another-owner", role: "owner" }, error: null });
+
+    const response = await DELETE(new Request("http://localhost/api/admin/users/another-owner", { method: "DELETE" }), { params: Promise.resolve({ id: "another-owner" }) });
+
+    expect(response.status).toBe(400);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("realoca os vínculos antes de excluir a autenticação do membro", async () => {
+    const response = await DELETE(new Request("http://localhost/api/admin/users/member-id", { method: "DELETE" }), { params: Promise.resolve({ id: "member-id" }) });
+
+    expect(response.status).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledWith("prepare_member_deletion", { target_user_id: "member-id", replacement_user_id: "owner-id" });
+    expect(mocks.deleteUser).toHaveBeenCalledWith("member-id");
+    expect(mocks.rpc.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteUser.mock.invocationCallOrder[0]);
+  });
+
+  it("não exclui a autenticação quando a realocação falha", async () => {
+    mocks.rpc.mockResolvedValue({ error: { message: "database error" } });
+
+    const response = await DELETE(new Request("http://localhost/api/admin/users/member-id", { method: "DELETE" }), { params: Promise.resolve({ id: "member-id" }) });
+
+    expect(response.status).toBe(500);
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 });
