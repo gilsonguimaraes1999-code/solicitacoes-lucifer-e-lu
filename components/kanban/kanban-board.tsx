@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type DragEndEvent, type ScreenReaderInstructions } from "@dnd-kit/core";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type DragEndEvent, type ScreenReaderInstructions } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Plus, Search } from "lucide-react";
 import { AddColumn } from "@/components/kanban/add-column";
 import { BoardNotice, type BoardMessage } from "@/components/kanban/board-notice";
 import { BoardFilters } from "@/components/kanban/board-filters";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
+import { RequestCardPreview } from "@/components/kanban/request-card";
 import { RequestDialog } from "@/components/requests/request-dialog";
 import { createBoardColumn, deleteBoardColumn, renameBoardColumn, reorderBoardColumn } from "@/features/columns/api";
 import { columnsReducer, type ColumnsEvent } from "@/features/columns/reducer";
@@ -77,6 +78,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
   const [selected, setSelected] = useState<RequestRecord | null | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [selectedColumn, setSelectedColumn] = useState("all");
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const selectedColumnRef = useRef("all");
   const requestsRef = useRef(sortedInitialRequests);
   const columnsRef = useRef(sortedInitialColumns);
@@ -100,7 +102,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
     setMessageState({ text, tone: error ? "error" : "success" });
   }, []);
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -222,6 +224,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
 
   const filtered = useMemo(() => filterBoard(requests, selectedColumn, query), [query, requests, selectedColumn]);
   const visibleColumns = selectedColumn === "all" ? columns : columns.filter((column) => column.id === selectedColumn);
+  const activeDragRequest = activeDragId ? requests.find((request) => request.id === activeDragId) : undefined;
   const accessibility = useMemo(() => ({
     screenReaderInstructions: boardScreenReaderInstructions,
     announcements: boardAnnouncements(requests, columns),
@@ -351,6 +354,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
   }
 
   async function handleMove(event: DragEndEvent) {
+    setActiveDragId(null);
     if (!permissions.canMove || !event.over) return;
 
     const currentRequests = requestsRef.current;
@@ -485,7 +489,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
           <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field" style={{ paddingLeft: "2.75rem" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
           <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} />
         </div>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMove} accessibility={accessibility}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={({ active }) => setActiveDragId(String(active.id))} onDragCancel={() => setActiveDragId(null)} onDragEnd={handleMove} accessibility={accessibility}>
           <div className="kanban-grid" aria-label="Quadro de listas">
             {visibleColumns.map((column) => {
               const columnIndex = columns.findIndex((item) => item.id === column.id);
@@ -493,6 +497,9 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
             })}
             <AddColumn columns={columns} profiles={profiles} canManageColumns={permissions.canManageColumns} onCreate={addColumn} />
           </div>
+          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
+            {activeDragRequest ? <RequestCardPreview request={activeDragRequest} /> : null}
+          </DragOverlay>
         </DndContext>
       </div>
       {selected !== undefined && <RequestDialog key={selected?.id ?? "new"} request={selected} profiles={profiles} columns={columns} canEdit={permissions.canEdit} canDelete={permissions.canDelete} canMove={permissions.canMove} onClose={() => setSelected(undefined)} onSave={save} onMoveToSystem={async (systemKey) => { if (selected) await moveToSystem(selected, systemKey); }} onDelete={selected ? async () => removeRequest(selected.id) : undefined} />}

@@ -6,15 +6,55 @@ import { CSS } from "@dnd-kit/utilities";
 import { ExternalLink } from "lucide-react";
 import type { RequestRecord } from "@/features/requests/types";
 
+export function RequestCardPreview({ request }: { request: RequestRecord }) {
+  return (
+    <article className="w-[min(320px,calc(100vw-2rem))] rotate-[1deg] rounded-xl border border-[#d4af37]/45 bg-[#171717] p-3 shadow-[0_20px_55px_rgba(0,0,0,0.7)] ring-1 ring-[#d4af37]/20">
+      <h3 className="font-semibold leading-snug text-white">{request.title}</h3>
+      <p className="mt-2 text-xs text-white/45">Solicitante: {request.requester_name}</p>
+      <p className="mt-1 text-xs text-white/45">Responsável: {request.assignee?.full_name ?? "—"}</p>
+      {request.external_url && <span className="mt-3 inline-flex items-center gap-1 text-xs text-gold-soft"><ExternalLink size={13} />Abrir link</span>}
+    </article>
+  );
+}
+
 export function RequestCard({ request, canMove, onOpen }: { request: RequestRecord; canMove: boolean; onOpen: () => void }) {
   const sortable = useSortable({ id: request.id, data: { columnId: request.column_id }, disabled: !canMove });
+  const dragProps = canMove ? { ...sortable.attributes, ...sortable.listeners } : {};
+
   return (
-    <article ref={sortable.setNodeRef} style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? .45 : 1 }} className="rounded-xl border border-white/10 bg-white/[.055] p-3 shadow-lg shadow-black/20 transition hover:border-white/20 hover:bg-white/[.075]">
-      <button type="button" onClick={onOpen} className="w-full text-left"><h3 className="font-semibold leading-snug text-white">{request.title}</h3><p className="mt-2 text-xs text-white/45">Solicitante: {request.requester_name}</p><p className="mt-1 text-xs text-white/45">Responsável: {request.assignee?.full_name ?? "—"}</p></button>
-      <div className="mt-3 flex items-center justify-between">
-        {request.external_url ? <a href={request.external_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-gold-soft"><ExternalLink size={13} />Abrir link</a> : <span />}
-        {canMove && <button type="button" aria-label={`Mover ${request.title}`} {...sortable.attributes} {...sortable.listeners} style={{ touchAction: "none" }} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/45">Arrastar</button>}
-      </div>
+    <article
+      ref={sortable.setNodeRef}
+      {...dragProps}
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir ${request.title}`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          onOpen();
+          return;
+        }
+        sortable.listeners?.onKeyDown?.(event);
+      }}
+      style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? .28 : 1, touchAction: canMove ? "none" : "auto" }}
+      className={`select-none rounded-xl border bg-white/[.055] p-3 shadow-lg shadow-black/20 outline-none transition-[border-color,background-color,box-shadow,opacity] duration-200 hover:border-[#d4af37]/30 hover:bg-white/[.075] focus-visible:border-[#d4af37]/60 focus-visible:ring-2 focus-visible:ring-[#d4af37]/25 ${sortable.isDragging ? "cursor-grabbing border-[#d4af37]/40" : canMove ? "cursor-grab border-white/10 active:cursor-grabbing" : "cursor-pointer border-white/10"}`}
+    >
+      <h3 className="font-semibold leading-snug text-white">{request.title}</h3>
+      <p className="mt-2 text-xs text-white/45">Solicitante: {request.requester_name}</p>
+      <p className="mt-1 text-xs text-white/45">Responsável: {request.assignee?.full_name ?? "—"}</p>
+      {request.external_url && (
+        <a
+          href={request.external_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative z-10 mt-3 inline-flex items-center gap-1 text-xs text-gold-soft"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <ExternalLink size={13} />Abrir link
+        </a>
+      )}
     </article>
   );
 }
