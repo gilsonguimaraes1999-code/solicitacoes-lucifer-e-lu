@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ToastNotice } from "@/components/ui/site-toast";
 import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
 import type { RequestInput } from "@/features/requests/schemas";
 import type { Profile, RequestRecord } from "@/features/requests/types";
@@ -140,7 +141,7 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
           <h2 className="text-xl font-bold text-white">{request ? (editing ? "Editar solicitação" : "Detalhes da solicitação") : "Nova solicitação"}</h2>
           <button type="button" className="button secondary" onClick={onClose}>Fechar</button>
         </header>
-        {error && <p role="alert" className="alert-error mt-4">{error}</p>}
+        {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
         {!editing && request ? (
           <div className="mt-5 grid gap-4 text-sm text-white/65">
             <div><b>Título</b><p>{request.title}</p></div>
@@ -187,3 +188,4 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
     </div>
   );
 }
+
