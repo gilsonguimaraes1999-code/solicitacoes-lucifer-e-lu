@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { positionBetween } from "@/features/requests/ordering";
 import { requestSchema } from "@/features/requests/schemas";
 import { filterUsersByStatus } from "@/features/users/filter-users";
+import { effectivePermissions } from "@/lib/permissions";
+import { updateUserSchema } from "@/features/users/schemas";
 
 describe("positionBetween", () => {
   it("cria posições estáveis entre vizinhos", () => {
@@ -29,5 +31,26 @@ describe("filterUsersByStatus", () => {
   it("filtra pelo status e pela pesquisa", () => {
     expect(filterUsersByStatus(users, "pending", "")).toEqual([users[1]]);
     expect(filterUsersByStatus(users, "all", "ANA@EXAMPLE")).toEqual([users[0]]);
+  });
+});
+
+describe("effectivePermissions", () => {
+  it("does not grant column management to a member without permission", () => {
+    expect(effectivePermissions({ role: "member", approval_status: "approved" }, null).canManageColumns).toBe(false);
+  });
+});
+
+describe("updateUserSchema", () => {
+  it("exige as cinco permissões booleanas", () => {
+    const permissions = {
+      can_create_requests: true,
+      can_edit_requests: true,
+      can_move_requests: true,
+      can_delete_requests: true,
+      can_manage_columns: false,
+    };
+
+    expect(updateUserSchema.safeParse({ action: "permissions", permissions }).success).toBe(true);
+    expect(updateUserSchema.safeParse({ action: "permissions", permissions: { ...permissions, can_manage_columns: undefined } }).success).toBe(false);
   });
 });
