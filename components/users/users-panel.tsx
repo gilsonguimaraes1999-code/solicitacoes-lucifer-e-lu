@@ -2,7 +2,8 @@
 /* eslint-disable react-hooks/set-state-in-effect -- the effect owns the initial remote fetch and realtime subscription. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownAZ, ArrowUpAZ, Check, Pencil, RotateCw, Search, UserPlus, X } from "lucide-react";
+import { ArrowDownAZ, ArrowUpAZ, Check, Pencil, Search, UserPlus, X } from "lucide-react";
+import { ToastNotice } from "@/components/ui/site-toast";
 import { CreateUserDialog } from "@/components/users/create-user-dialog";
 import { UserEditor } from "@/components/users/user-editor";
 import { filterUsersByStatus, sortUsersByName, type UserSortOrder, type UserStatusFilter } from "@/features/users/filter-users";
@@ -125,8 +126,8 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
         <button className="button inline-flex items-center gap-2" onClick={() => setShowCreate(true)}><UserPlus size={18} />Nova conta</button>
       </header>
 
-      {notice && <div role="status" className="alert-success mt-5"><span className="inline-flex items-center gap-2"><Check size={17} />{notice}</span><button type="button" aria-label="Fechar mensagem" onClick={() => setNotice("")}><X size={16} /></button></div>}
-      {error && <div role="alert" className="alert-error mt-5 flex items-center justify-between gap-3"><span>{error}</span><button type="button" className="inline-flex items-center gap-1 font-semibold" onClick={() => void load()}><RotateCw size={15} />Tentar novamente</button></div>}
+      {notice && <ToastNotice text={notice} tone="success" onClose={() => setNotice("")} />}
+      {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} actionLabel="Tentar novamente" onAction={() => void load()} />}
 
       <section className="panel mt-5 p-4 sm:p-5">
         <div className="flex flex-wrap gap-2" aria-label="Filtrar usuários por status">{(Object.keys(statusLabels) as UserStatusFilter[]).map((item) => <button key={item} type="button" aria-pressed={status === item} onClick={() => setStatus(item)} className={`filter-chip ${status === item ? "active" : ""}`}>{statusLabels[item]} <span>{counts[item]}</span></button>)}</div>
@@ -152,3 +153,4 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     {showCreate && <CreateUserDialog onClose={() => setShowCreate(false)} onCreate={createUser} />}
   </main>;
 }
+
