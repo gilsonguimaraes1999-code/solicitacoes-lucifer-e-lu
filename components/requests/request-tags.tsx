@@ -47,9 +47,9 @@ export function RequestTagIcons({ tags }: { tags: RequestTag[] }) {
 }
 
 export function RequestTagSelector({ value, onChange }: { value: RequestTag[]; onChange: (tags: RequestTag[]) => void }) {
-  return <fieldset className="grid gap-1.5">
-    <legend className="text-xs font-semibold text-white/70">Tags</legend>
-    <div className="flex flex-wrap items-center gap-1.5">
+  return <fieldset className="min-w-0">
+    <legend className="sr-only">Tags</legend>
+    <div className="flex flex-wrap items-center justify-start gap-1.5">
       {REQUEST_TAGS.map((tag) => {
         const selected = value.includes(tag);
         const color = selectorTagStyles[tag];
