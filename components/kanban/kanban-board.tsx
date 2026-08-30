@@ -413,18 +413,14 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
 
   async function reorderColumn(columnId: string, direction: "left" | "right") {
     const currentColumns = columnsRef.current;
-    const customColumns = currentColumns.filter((column) => column.kind === "assignee");
-    const currentIndex = customColumns.findIndex((column) => column.id === columnId);
+    const currentIndex = currentColumns.findIndex((column) => column.id === columnId && column.kind === "assignee");
     const targetIndex = currentIndex + (direction === "left" ? -1 : 1);
-    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= customColumns.length) return;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= currentColumns.length) return;
 
-    const previous = customColumns[currentIndex];
-    const maxSystemPosition = currentColumns
-      .filter((column) => column.kind === "system")
-      .reduce((maximum, column) => Math.max(maximum, column.position), 0);
+    const previous = currentColumns[currentIndex];
     const position = direction === "left"
-      ? positionBetween(customColumns[targetIndex - 1]?.position ?? maxSystemPosition, customColumns[targetIndex].position)
-      : positionBetween(customColumns[targetIndex].position, customColumns[targetIndex + 1]?.position);
+      ? positionBetween(currentColumns[targetIndex - 1]?.position, currentColumns[targetIndex].position)
+      : positionBetween(currentColumns[targetIndex].position, currentColumns[targetIndex + 1]?.position);
     const version = advanceColumnVersion(columnId);
     dispatchColumns({ type: "update", column: { ...previous, position } });
     setMessage("");
@@ -479,9 +475,8 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMove} accessibility={accessibility}>
           <div className="kanban-grid" aria-label="Quadro de listas">
             {visibleColumns.map((column) => {
-              const customColumns = columns.filter((item) => item.kind === "assignee");
-              const customIndex = customColumns.findIndex((item) => item.id === column.id);
-              return <KanbanColumn key={column.id} column={column} requests={filtered.filter((request) => request.column_id === column.id)} canMove={permissions.canMove} canManageColumns={permissions.canManageColumns} canMoveColumnLeft={customIndex > 0} canMoveColumnRight={customIndex >= 0 && customIndex < customColumns.length - 1} onOpen={setSelected} onRename={renameColumn} onReorder={reorderColumn} onDelete={removeColumn} />;
+              const columnIndex = columns.findIndex((item) => item.id === column.id);
+              return <KanbanColumn key={column.id} column={column} requests={filtered.filter((request) => request.column_id === column.id)} canMove={permissions.canMove} canManageColumns={permissions.canManageColumns} canMoveColumnLeft={column.kind === "assignee" && columnIndex > 0} canMoveColumnRight={column.kind === "assignee" && columnIndex >= 0 && columnIndex < columns.length - 1} onOpen={setSelected} onRename={renameColumn} onReorder={reorderColumn} onDelete={removeColumn} />;
             })}
             <AddColumn columns={columns} profiles={profiles} canManageColumns={permissions.canManageColumns} onCreate={addColumn} />
           </div>
