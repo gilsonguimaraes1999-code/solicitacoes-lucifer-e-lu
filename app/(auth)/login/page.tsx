@@ -6,9 +6,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <h1 className="sr-only">Entrar</h1>
-      <AuthMessage error={params.erro} success={params.senha ? "Senha alterada. Entre novamente." : undefined} />
       <LoginForm />
+      <AuthMessage error={params.erro} success={params.senha ? "Senha alterada. Entre novamente." : undefined} />
     </>
   );
 }
-
