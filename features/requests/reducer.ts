@@ -7,7 +7,7 @@ export type RequestsEvent =
   | { type: "delete"; id: string };
 
 export function requestsReducer(state: RequestRecord[], event: RequestsEvent): RequestRecord[] {
-  if (event.type === "snapshot") return sortRequests(event.requests);
+  if (event.type === "snapshot") return sortRequests([...new Map(event.requests.map((request) => [request.id, request])).values()]);
   if (event.type === "delete") return state.filter((item) => item.id !== event.id);
   const map = new Map(state.map((item) => [item.id, item]));
   map.set(event.request.id, event.request);

@@ -19,6 +19,7 @@ export interface UserPermissions {
   can_edit_requests: boolean;
   can_move_requests: boolean;
   can_delete_requests: boolean;
+  can_manage_columns: boolean;
   updated_at: string;
 }
 
@@ -27,6 +28,7 @@ export interface EffectivePermissions {
   canEdit: boolean;
   canMove: boolean;
   canDelete: boolean;
+  canManageColumns: boolean;
 }
 
 export interface RequestRecord {
@@ -36,7 +38,8 @@ export interface RequestRecord {
   requester_name: string;
   assigned_to: string;
   external_url: string | null;
-  status: RequestStatus;
+  status: RequestStatus | null;
+  column_id: string;
   position: number;
   created_by: string;
   created_at: string;
