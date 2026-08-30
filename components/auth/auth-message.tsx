@@ -7,6 +7,5 @@ export function AuthMessage({ error, success }: { error?: string; success?: stri
   const [visible, setVisible] = useState(true);
   const text = error ?? success;
   if (!text || !visible) return null;
-  return <ToastNotice text={text} tone={error ? "error" : "success"} onClose={() => setVisible(false)} />;
+  return <ToastNotice text={text} tone={error ? "error" : "success"} placement="inline" onClose={() => setVisible(false)} />;
 }
-
