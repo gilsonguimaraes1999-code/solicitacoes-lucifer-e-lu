@@ -130,20 +130,20 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={request ? "Detalhes da solicitação" : "Nova solicitação"} className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div role="dialog" aria-modal="true" aria-label={request ? "Detalhes da solicitação" : "Nova solicitação"} className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="panel max-h-[92vh] w-full max-w-xl overflow-auto p-6">
         <header className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-bold">{request ? (editing ? "Editar solicitação" : "Detalhes da solicitação") : "Nova solicitação"}</h2>
+          <h2 className="text-xl font-bold text-white">{request ? (editing ? "Editar solicitação" : "Detalhes da solicitação") : "Nova solicitação"}</h2>
           <button type="button" className="button secondary" onClick={onClose}>Fechar</button>
         </header>
-        {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        {error && <p role="alert" className="alert-error mt-4">{error}</p>}
         {!editing && request ? (
-          <div className="mt-5 grid gap-4 text-sm">
+          <div className="mt-5 grid gap-4 text-sm text-white/65">
             <div><b>Título</b><p>{request.title}</p></div>
             <div><b>Descrição</b><p className="whitespace-pre-wrap">{request.description || "Sem descrição"}</p></div>
             <div><b>Solicitante</b><p>{request.requester_name}</p></div>
             <div><b>Responsável</b><p>{request.assignee?.full_name ?? "—"}</p></div>
-            {request.external_url && <a href={request.external_url} target="_blank" rel="noopener noreferrer" className="text-blue-700">Abrir link externo</a>}
+            {request.external_url && <a href={request.external_url} target="_blank" rel="noopener noreferrer" className="text-gold-soft">Abrir link externo</a>}
             {canMove && (
               <div className="grid gap-2">
                 <b>Mover para</b>
@@ -163,7 +163,7 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
             <label className="label">Descrição<textarea className="field min-h-28" name="description" value={formValues.description} onChange={(event) => updateField("description", event.target.value)} maxLength={5000} /></label>
             <label className="label">Solicitante<input className="field" name="requesterName" value={formValues.requesterName} onChange={(event) => updateField("requesterName", event.target.value)} required /></label>
             <label className="label">Responsável<select className="field" name="assignedTo" value={formValues.assignedTo} onChange={(event) => updateField("assignedTo", event.target.value)} required><option value="">Selecione</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name}</option>)}</select></label>
-            <p className="-mt-2 text-sm text-slate-600" aria-live="polite">{destinationMessage}</p>
+            <p className="-mt-2 text-sm text-white/45" aria-live="polite">{destinationMessage}</p>
             <label className="label">Link externo<input className="field" name="externalUrl" type="url" placeholder="https://" value={formValues.externalUrl} onChange={(event) => updateField("externalUrl", event.target.value)} /></label>
             <button className="button" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</button>
           </form>
