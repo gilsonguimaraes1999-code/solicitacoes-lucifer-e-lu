@@ -5,10 +5,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Solicitações | Lucifer e Lu",
   description: "Gerenciamento simples de solicitações em Kanban",
-  icons: { icon: [{ url: "/favicon.ico" }, { url: "/angel-a.png", type: "image/png" }] },
+  icons: { icon: [{ url: "/angel-a.png?v=2", type: "image/png" }] },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="pt-BR"><body><SiteToastProvider>{children}</SiteToastProvider></body></html>;
 }
-
