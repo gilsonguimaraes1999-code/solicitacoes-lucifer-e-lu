@@ -9,11 +9,13 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
 
   return <>
-    <form action={login} className="mt-6 grid gap-4">
-      <label className="label">E-mail<input className="field" name="email" type="email" autoComplete="email" required /></label>
-      <label className="label">Senha<span className="relative"><input className="field pr-11" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required /><button type="button" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} aria-pressed={showPassword} className="absolute inset-y-0 right-0 grid w-11 place-items-center text-white/40 transition-colors hover:text-gold-soft focus-visible:text-gold" onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label>
-      <button className="button mt-1 w-full" type="submit">Entrar</button>
+    <form action={login} className="mt-4 space-y-4">
+      <label className="block text-sm text-white">E-mail<input className="calculator-login-field mt-2" name="email" type="email" autoComplete="email" required /></label>
+      <label className="block text-sm text-white">Senha<span className="relative mt-2 block"><input className="calculator-login-field pr-11" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required /><button type="button" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} aria-pressed={showPassword} className="absolute inset-y-0 right-0 grid w-10 place-items-center text-white/50 transition-colors hover:text-white focus-visible:text-gold" onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}</button></span></label>
+      <button className="calculator-login-primary w-full" type="submit">Entrar</button>
+      <Link className="calculator-login-ghost w-full" href="/forgot-password">Esqueci minha senha</Link>
     </form>
-    <div className="mt-5 flex justify-between text-sm text-white/60"><Link className="transition-colors hover:text-gold-soft" href="/register">Criar conta</Link><Link className="transition-colors hover:text-gold-soft" href="/forgot-password">Esqueci a senha</Link></div>
+    <Link className="calculator-login-access mt-3 w-full" href="/register">Solicitar novo acesso</Link>
   </>;
 }
+
