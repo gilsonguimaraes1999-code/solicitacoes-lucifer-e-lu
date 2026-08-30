@@ -28,6 +28,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     can_move_requests: parsed.data.permissions.can_move_requests,
     can_delete_requests: parsed.data.permissions.can_delete_requests,
     can_manage_columns: parsed.data.permissions.can_manage_columns,
+    can_manage_cities: parsed.data.permissions.can_manage_cities,
   }, { onConflict: "user_id" }));
   if (error) return NextResponse.json({ error: "Não foi possível salvar as alterações do usuário." }, { status: 500 });
   return NextResponse.json({ ok: true });

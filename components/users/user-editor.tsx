@@ -13,6 +13,7 @@ const permissionLabels: [keyof PermissionSet, string, string][] = [
   ["can_move_requests", "Mover solicitações", "Permite arrastar cartões entre listas."],
   ["can_delete_requests", "Excluir solicitações", "Permite remover cartões do quadro."],
   ["can_manage_columns", "Gerenciar colunas", "Permite criar, ordenar, renomear e excluir listas."],
+  ["can_manage_cities", "Gerenciar cidades", "Permite criar, renomear, desativar e reativar cidades."],
 ];
 
 export function UserEditor({ user, onClose, onSave, onDelete }: { user: AdminUser; onClose: () => void; onSave: (id: string, value: UserEditorValue) => Promise<void>; onDelete?: (id: string) => Promise<void> }) {
@@ -76,4 +77,3 @@ export function UserEditor({ user, onClose, onSave, onDelete }: { user: AdminUse
     </form>
   </Modal>{confirmDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da conta" title="Excluir esta conta?" itemName={user.full_name} description={`${user.email} será removido permanentemente. As solicitações vinculadas serão transferidas para a conta owner e retornarão à lista Pendente.`} busy={deleting} onCancel={() => setConfirmDelete(false)} onConfirm={() => void removeAccount()} />}</>;
 }
-

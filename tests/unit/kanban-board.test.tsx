@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoardColumn } from "@/features/columns/types";
+import type { City } from "@/features/cities/types";
 import type { EffectivePermissions, RequestRecord } from "@/features/requests/types";
 
 const mocks = vi.hoisted(() => ({
@@ -33,12 +34,16 @@ const columns: BoardColumn[] = [
   { id: "column-lucifer", name: "Lucifer", kind: "assignee", system_key: null, assignee_id: "profile-lucifer", position: 4096, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
 ];
 
-const requests: RequestRecord[] = [
-  { id: "request-1", title: "Pedido pendente", description: null, requester_name: "Ana", assigned_to: "profile-lucifer", external_url: null, tags: [], status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
-  { id: "request-2", title: "Pedido do responsável", description: null, requester_name: "Bruno", assigned_to: "profile-lucifer", external_url: null, tags: [], status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+const cities: City[] = [
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
 ];
 
-const permissions: EffectivePermissions = { canCreate: false, canEdit: false, canMove: false, canDelete: false, canManageColumns: false };
+const requests: RequestRecord[] = [
+  { id: "request-1", title: "Pedido pendente", description: null, cities, assigned_to: "profile-lucifer", external_url: null, tags: [], status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+  { id: "request-2", title: "Pedido do responsável", description: null, cities, assigned_to: "profile-lucifer", external_url: null, tags: [], status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+];
+
+const permissions: EffectivePermissions = { canCreate: false, canEdit: false, canMove: false, canDelete: false, canManageColumns: false, canManageCities: false };
 
 const brunoProfileId = "22222222-2222-4222-8222-222222222222";
 const brunoColumn: BoardColumn = { id: "column-bruno", name: "Bruno", kind: "assignee", system_key: null, assignee_id: brunoProfileId, position: 5120, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
@@ -87,7 +92,7 @@ describe("KanbanBoard", () => {
   it("inicializa solicitações e colunas pelos snapshots ordenados dos reducers", () => {
     const laterPending = { ...requests[0], id: "request-later", title: "Pedido posterior", position: 2048 };
     const earlierPending = { ...requests[0], id: "request-earlier", title: "Pedido anterior", position: 512 };
-    render(<KanbanBoard initialRequests={[laterPending, requests[1], earlierPending]} initialColumns={[brunoColumn, ...columns].reverse()} profiles={[]} currentUserId="owner" permissions={permissions} />);
+    render(<KanbanBoard initialRequests={[laterPending, requests[1], earlierPending]} initialColumns={[brunoColumn, ...columns].reverse()} cities={cities} profiles={[]} currentUserId="owner" permissions={permissions} />);
 
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Lucifer", "Bruno"]);
     const pendingSection = screen.getByRole("heading", { level: 2, name: "Pendente" }).closest("section");
@@ -96,9 +101,9 @@ describe("KanbanBoard", () => {
   });
 
   it("mostra somente a coluna escolhida e restaura o quadro completo em Todos", () => {
-    render(<KanbanBoard initialRequests={requests} initialColumns={columns} profiles={[]} currentUserId="owner" permissions={permissions} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={permissions} />);
 
-    expect(screen.getByPlaceholderText("Título, solicitante ou responsável")).toHaveStyle({ paddingLeft: "2.75rem" });
+    expect(screen.getByPlaceholderText("Título, cidade ou responsável")).toHaveStyle({ paddingLeft: "2.75rem" });
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Lucifer"]);
 
     fireEvent.click(screen.getByRole("button", { name: "Pendente (1)" }));
@@ -115,7 +120,7 @@ describe("KanbanBoard", () => {
     const profileId = "22222222-2222-4222-8222-222222222222";
     const created: BoardColumn = { id: "column-bruno", name: "Bruno", kind: "assignee", system_key: null, assignee_id: profileId, position: 5120, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
     mocks.createBoardColumn.mockResolvedValue(created);
-    render(<KanbanBoard initialRequests={requests} initialColumns={columns} profiles={[{ id: profileId, full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" }]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[{ id: profileId, full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" }]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profileId } });
@@ -127,7 +132,7 @@ describe("KanbanBoard", () => {
 
   it("move uma coluna personalizada por uma posição visível, atravessando as colunas fixas", async () => {
     mocks.reorderBoardColumn.mockResolvedValue({ ...columns[3], position: 2560 });
-    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a esquerda" }));
@@ -141,7 +146,7 @@ describe("KanbanBoard", () => {
   it("reverte a ordem otimista e informa o erro quando a RPC de reordenação falha", async () => {
     const reorder = deferred<BoardColumn>();
     mocks.reorderBoardColumn.mockReturnValue(reorder.promise);
-    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a direita" }));
@@ -160,7 +165,7 @@ describe("KanbanBoard", () => {
     const reorder = deferred<BoardColumn>();
     const confirmed = { ...columns[3], position: 6144 };
     mocks.reorderBoardColumn.mockReturnValue(reorder.promise);
-    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, brunoColumn]} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Mover lista Lucifer para a direita" }));
@@ -179,7 +184,7 @@ describe("KanbanBoard", () => {
   it("não ressuscita uma coluna excluída antes da resposta atrasada de criação", async () => {
     const create = deferred<BoardColumn>();
     mocks.createBoardColumn.mockReturnValue(create.promise);
-    render(<KanbanBoard initialRequests={requests} initialColumns={columns} profiles={[{ id: brunoProfileId, full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" }]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[{ id: brunoProfileId, full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" }]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: brunoProfileId } });
@@ -200,7 +205,7 @@ describe("KanbanBoard", () => {
     const rename = deferred<BoardColumn>();
     const renamedColumn = { ...columns[3], id: "33333333-3333-4333-8333-333333333333" };
     mocks.renameBoardColumn.mockReturnValue(rename.promise);
-    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns.slice(0, 3), renamedColumn]} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns.slice(0, 3), renamedColumn]} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
@@ -219,7 +224,7 @@ describe("KanbanBoard", () => {
   });
 
   it("ignora INSERT ou UPDATE Realtime fora de ordem após DELETE da coluna", () => {
-    render(<KanbanBoard initialRequests={requests} initialColumns={columns} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     emitColumnChange("DELETE", columns[3]);
     emitColumnChange("UPDATE", { ...columns[3], name: "Coluna obsoleta" });

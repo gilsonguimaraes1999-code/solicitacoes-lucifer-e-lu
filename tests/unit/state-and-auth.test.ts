@@ -8,7 +8,6 @@ const card: RequestRecord = {
   id: "11111111-1111-4111-8111-111111111111",
   title: "Card",
   description: null,
-  requester_name: "Pessoa",
   assigned_to: "22222222-2222-4222-8222-222222222222",
   external_url: null,
   tags: [],
@@ -18,6 +17,7 @@ const card: RequestRecord = {
   created_by: "33333333-3333-4333-8333-333333333333",
   created_at: "2026-08-29T00:00:00Z",
   updated_at: "2026-08-29T00:00:00Z",
+  cities: [],
 };
 
 describe("requestsReducer", () => {
@@ -65,16 +65,23 @@ describe("registerSchema", () => {
 
 describe("effectivePermissions", () => {
   it("dá acesso total ao owner e preserva flags do membro", () => {
+    const ownerProfile = { role: "owner" as const, approval_status: "approved" as const };
+    const memberProfile = { role: "member" as const, approval_status: "approved" as const };
+
     expect(effectivePermissions({ role: "owner", approval_status: "approved" }, null)).toEqual({
       canCreate: true,
       canEdit: true,
       canMove: true,
       canDelete: true,
       canManageColumns: true,
+      canManageCities: true,
     });
     expect(effectivePermissions({ role: "member", approval_status: "approved" }, { can_create_requests: true })).toMatchObject({
       canCreate: true,
       canEdit: false,
     });
+    expect(effectivePermissions(ownerProfile, null).canManageCities).toBe(true);
+    expect(effectivePermissions(memberProfile, { can_manage_cities: true }).canManageCities).toBe(true);
+    expect(effectivePermissions(memberProfile, { can_manage_cities: false }).canManageCities).toBe(false);
   });
 });

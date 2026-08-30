@@ -9,11 +9,14 @@ interface ConfirmDialogProps {
   itemName: string;
   description: string;
   busy?: boolean;
+  actionLabel?: string;
+  busyActionLabel?: string;
+  eyebrow?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
-export function ConfirmDialog({ ariaLabel, title, itemName, description, busy = false, onCancel, onConfirm }: ConfirmDialogProps) {
+export function ConfirmDialog({ ariaLabel, title, itemName, description, busy = false, actionLabel = "Excluir definitivamente", busyActionLabel = "Excluindo...", eyebrow = "Ação permanente", onCancel, onConfirm }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -42,7 +45,7 @@ export function ConfirmDialog({ ariaLabel, title, itemName, description, busy = 
               <TriangleAlert size={24} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-[#d4af37]">Ação permanente</p>
+              <p className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-[#d4af37]">{eyebrow}</p>
               <h2 className="text-xl font-bold text-white">{title}</h2>
             </div>
           </div>
@@ -55,7 +58,7 @@ export function ConfirmDialog({ ariaLabel, title, itemName, description, busy = 
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button ref={cancelRef} type="button" className="button secondary" disabled={busy} onClick={onCancel}>Cancelar</button>
             <button type="button" className="button danger" disabled={busy} onClick={onConfirm}>
-              {busy ? "Excluindo..." : "Excluir definitivamente"}
+              {busy ? busyActionLabel : actionLabel}
             </button>
           </div>
         </div>

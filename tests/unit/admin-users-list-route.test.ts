@@ -47,6 +47,7 @@ describe("GET /api/admin/users", () => {
   });
 
   it("combina Auth e perfil completo para os filtros de status", async () => {
+    mocks.permissionsSelect.mockResolvedValue({ data: [{ user_id: "member-id", can_manage_cities: true }], error: null });
     const response = await GET();
 
     expect(response.status).toBe(200);
@@ -56,6 +57,7 @@ describe("GET /api/admin/users", () => {
       full_name: "Lua",
       role: "member",
       approval_status: "pending",
+      permissions: expect.objectContaining({ can_manage_cities: true }),
     })]);
   });
 

@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardFilters } from "@/components/kanban/board-filters";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import type { BoardColumn } from "@/features/columns/types";
+import type { City } from "@/features/cities/types";
+import { filterBoard } from "@/features/requests/filter";
 import type { RequestRecord } from "@/features/requests/types";
+
+const santaLuzia: City = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+const beloHorizonte: City = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
 
 const columns: BoardColumn[] = [
   { id: "column-pending", name: "Pendente", kind: "system", system_key: "pending", assignee_id: null, position: 1024, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
@@ -13,13 +18,20 @@ const columns: BoardColumn[] = [
 ];
 
 const requests: RequestRecord[] = [
-  { id: "request-1", title: "Primeiro", description: null, requester_name: "Ana", assigned_to: "profile-lucifer", external_url: null, tags: ["hub", "outros"], status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
-  { id: "request-2", title: "Segundo", description: null, requester_name: "Bruno", assigned_to: "profile-lucifer", external_url: null, tags: ["jogo"], status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+  { id: "request-1", title: "Primeiro", description: null, cities: [santaLuzia], assigned_to: "profile-lucifer", external_url: null, tags: ["hub", "outros"], status: null, column_id: "column-lucifer", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
+  { id: "request-2", title: "Segundo", description: null, cities: [santaLuzia, beloHorizonte], assigned_to: "profile-lucifer", external_url: null, tags: ["jogo"], status: "pending", column_id: "column-pending", position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-lucifer", full_name: "Lucifer" } },
 ];
 
 afterEach(cleanup);
 
 describe("BoardFilters", () => {
+  it("pesquisa por cidade e não considera mais o solicitante legado", () => {
+    const legacyOnly = { ...requests[0], requester_name: "Nome legado exclusivo" } as RequestRecord & { requester_name: string };
+
+    expect(filterBoard(requests, "all", "belo horizonte")).toEqual([requests[1]]);
+    expect(filterBoard([legacyOnly], "all", "Nome legado exclusivo")).toEqual([]);
+  });
+
   it("exibe todos os chips com contagens por column_id e troca o filtro selecionado", () => {
     const onChange = vi.fn();
 
@@ -73,5 +85,17 @@ describe("KanbanColumn", () => {
     expect(screen.getByLabelText("Tag Outros")).toHaveTextContent("🔁");
     expect(screen.queryByText("HUB")).not.toBeInTheDocument();
     expect(screen.queryByText("Outros")).not.toBeInTheDocument();
+  });
+
+  it("mostra Cidade ou Cidades no cartão sem perder a abertura pelo clique", () => {
+    const onOpen = vi.fn();
+    const { rerender } = render(<KanbanColumn column={columns[3]} requests={[requests[0]]} canMove={false} canManageColumns={false} onOpen={onOpen} onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.getByText("Cidade: Santa Luzia")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir Primeiro" }));
+    expect(onOpen).toHaveBeenCalledOnce();
+
+    rerender(<KanbanColumn column={columns[1]} requests={[requests[1]]} canMove={false} canManageColumns={false} onOpen={onOpen} onRename={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByText("Cidades: Santa Luzia, Belo Horizonte")).toBeInTheDocument();
   });
 });

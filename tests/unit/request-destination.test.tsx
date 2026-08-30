@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RequestDialog } from "@/components/requests/request-dialog";
+import type { City } from "@/features/cities/types";
 import type { BoardColumn } from "@/features/columns/types";
 import type { Profile, RequestRecord } from "@/features/requests/types";
 
@@ -8,6 +9,12 @@ const profiles: Profile[] = [
   { id: "11111111-1111-4111-8111-111111111111", full_name: "Lucifer", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
   { id: "22222222-2222-4222-8222-222222222222", full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
   { id: "33333333-3333-4333-8333-333333333333", full_name: "Lu", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+];
+
+const cities: City[] = [
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+  { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+  { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", name: "Cidade histórica", active: false, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
 ];
 
 const columns: BoardColumn[] = [
@@ -21,7 +28,7 @@ const request: RequestRecord = {
   id: "request-1",
   title: "Pedido de acesso",
   description: null,
-  requester_name: "Ana",
+  cities: [cities[0]],
   assigned_to: profiles[0].id,
   external_url: null,
   tags: ["loja"],
@@ -35,6 +42,7 @@ const request: RequestRecord = {
 };
 
 const baseProps = {
+  cities,
   profiles,
   columns,
   canEdit: true,
@@ -44,6 +52,16 @@ const baseProps = {
   onSave: vi.fn().mockResolvedValue(undefined),
   onMoveToSystem: vi.fn().mockResolvedValue(undefined),
 };
+
+function fillRequiredFields() {
+  fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
+  fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+}
+
+function selectCity(city: City) {
+  fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+  fireEvent.click(screen.getByRole("option", { name: city.active ? city.name : `${city.name} Desativada` }));
+}
 
 afterEach(() => {
   cleanup();
@@ -104,9 +122,8 @@ describe("RequestDialog tags", () => {
   it("exige uma tag e envia todas as tags selecionadas", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<RequestDialog {...baseProps} request={null} onSave={onSave} />);
-    fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
-    fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    fillRequiredFields();
+    selectCity(cities[0]);
 
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     expect(await screen.findByText("Selecione pelo menos uma tag.")).toBeInTheDocument();
@@ -127,6 +144,106 @@ describe("RequestDialog tags", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tag Jogo" }));
     expect(screen.getByRole("button", { name: "Tag Loja" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("button", { name: "Tag Jogo" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("RequestDialog cities", () => {
+  it("remove cidade recém-desativada ao criar e pede revisão da seleção", () => {
+    const { rerender } = render(<RequestDialog {...baseProps} request={null} />);
+    selectCity(cities[0]);
+    expect(screen.getByRole("button", { name: "Selecionar cidades" })).toHaveTextContent(cities[0].name);
+
+    const updatedCities = cities.map((city) => city.id === cities[0].id ? { ...city, active: false } : city);
+    rerender(<RequestDialog {...baseProps} request={null} cities={updatedCities} />);
+
+    expect(screen.getByText("Uma cidade selecionada foi desativada. Revise a seleção.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Selecionar cidades" })).not.toHaveTextContent(cities[0].name);
+  });
+
+  it("preserva no modo de edição a relação que acabou de ficar inativa e permite removê-la", () => {
+    const { rerender } = render(<RequestDialog {...baseProps} request={request} />);
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    const inactiveCity = { ...cities[0], active: false };
+
+    rerender(<RequestDialog {...baseProps} request={{ ...request, cities: [inactiveCity] }} cities={[inactiveCity, ...cities.slice(1)]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+
+    const option = screen.getByRole("option", { name: `${inactiveCity.name} Desativada` });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(option);
+    expect(screen.queryByRole("option", { name: `${inactiveCity.name} Desativada` })).not.toBeInTheDocument();
+  });
+
+  it("exige cidade antes de submeter, mantém o formulário aberto e permite selecionar várias", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={null} onSave={onSave} />);
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(await screen.findByText("Selecione pelo menos uma cidade.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Nova solicitação" })).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+    fireEvent.click(screen.getByRole("option", { name: cities[0].name }));
+    fireEvent.click(screen.getByRole("option", { name: cities[1].name }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ cityIds: [cities[0].id, cities[1].id] })));
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty("requesterName");
+  });
+
+  it("pré-seleciona as cidades relacionadas e permite substituí-las ao editar", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={{ ...request, cities: [cities[0], cities[1]] }} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+
+    expect(screen.getByRole("option", { name: cities[0].name })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: cities[1].name })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("option", { name: cities[0].name }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ cityIds: [cities[1].id] })));
+  });
+
+  it("mantém cidade desativada relacionada visível, removível e identificada nos detalhes", () => {
+    render(<RequestDialog {...baseProps} request={{ ...request, cities: [cities[2]] }} />);
+
+    expect(screen.getByText("Cidade", { selector: "b" })).toBeInTheDocument();
+    expect(screen.getByText(cities[2].name)).toBeInTheDocument();
+    expect(screen.getByText("Desativada")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+    const inactiveOption = screen.getByRole("option", { name: `${cities[2].name} Desativada` });
+    expect(inactiveOption).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(inactiveOption);
+    expect(screen.queryByRole("option", { name: `${cities[2].name} Desativada` })).not.toBeInTheDocument();
+  });
+
+  it("usa rótulo plural para várias cidades nos detalhes", () => {
+    render(<RequestDialog {...baseProps} request={{ ...request, cities: [cities[0], cities[1]] }} />);
+
+    expect(screen.getByText("Cidades", { selector: "b" })).toBeInTheDocument();
+    expect(screen.getByText("Santa Luzia, Belo Horizonte")).toBeInTheDocument();
+  });
+
+  it("preserva o formulário aberto e preenchido quando a API falha", async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error("offline"));
+    render(<RequestDialog {...baseProps} request={null} onSave={onSave} />);
+    fillRequiredFields();
+    selectCity(cities[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(await screen.findByText("Não foi possível salvar. Revise os dados e tente novamente.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Nova solicitação" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Título")).toHaveValue("Nova demanda");
+    expect(screen.getByRole("button", { name: "Selecionar cidades" })).toHaveTextContent(cities[0].name);
   });
 });
 

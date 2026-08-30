@@ -1,5 +1,5 @@
 begin;
-select plan(86);
+select plan(113);
 
 select has_table('public', 'profiles', 'profiles existe');
 select has_table('public', 'user_permissions', 'user_permissions existe');
@@ -28,12 +28,28 @@ select function_privs_are('public', 'reorder_board_column', array['uuid','numeri
 select function_privs_are('public', 'reorder_board_column', array['uuid','numeric'], 'public', array[]::text[], 'público não executa ordenação de coluna');
 select function_privs_are('public', 'delete_board_column', array['uuid'], 'authenticated', array['EXECUTE'], 'autenticados executam exclusão de coluna');
 select function_privs_are('public', 'delete_board_column', array['uuid'], 'public', array[]::text[], 'público não executa exclusão de coluna');
-select function_privs_are('public', 'create_request', array['text','text','text','uuid','text','numeric'], 'authenticated', array['EXECUTE'], 'autenticados executam criação de solicitação');
+select function_privs_are('public', 'create_request', array['text','text','text','uuid','text','numeric'], 'authenticated', array[]::text[], 'RPC legada de criação sem tags não fica executável');
 select function_privs_are('public', 'create_request', array['text','text','text','uuid','text','numeric'], 'public', array[]::text[], 'público não executa criação de solicitação');
 select function_privs_are('public', 'move_request', array['uuid','uuid','numeric'], 'authenticated', array['EXECUTE'], 'autenticados executam movimento por coluna');
 select function_privs_are('public', 'move_request', array['uuid','uuid','numeric'], 'public', array[]::text[], 'público não executa movimento por coluna');
-select function_privs_are('public', 'update_request_content', array['uuid','text','text','text','uuid','text'], 'authenticated', array['EXECUTE'], 'autenticados executam edição de solicitação');
+select function_privs_are('public', 'update_request_content', array['uuid','text','text','text','uuid','text'], 'authenticated', array[]::text[], 'RPC legada de edição sem tags não fica executável');
 select function_privs_are('public', 'update_request_content', array['uuid','text','text','text','uuid','text'], 'public', array[]::text[], 'público não executa edição de solicitação');
+select function_privs_are(
+  'public',
+  'create_request',
+  array['text','text','text','uuid','text','numeric','text[]'],
+  'authenticated',
+  array[]::text[],
+  'RPC legada de criação não fica executável'
+);
+select function_privs_are(
+  'public',
+  'update_request_content',
+  array['uuid','text','text','text','uuid','text','text[]'],
+  'authenticated',
+  array[]::text[],
+  'RPC legada de edição não fica executável'
+);
 select is(
   to_regprocedure('public.move_request(uuid,text,numeric)'),
   null::regprocedure,
@@ -705,6 +721,334 @@ select results_eq(
   $$ values ('00000000-0000-0000-0000-000000000303'::uuid) $$,
   'coluna vazia é excluída e devolvida'
 );
+
+update public.user_permissions
+set can_manage_cities = true
+where user_id = '00000000-0000-0000-0000-000000000302';
+
+do $$ begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000301', true);
+end $$;
+
+select ok(public.has_city_management_permission(), 'owner aprovado gerencia cidades');
+
+do $$ begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000302', true);
+end $$;
+
+select ok(public.has_city_management_permission(), 'membro aprovado com permissão gerencia cidades');
+
+select results_eq(
+  $$ select created.name, created.created_by from public.create_city('  Cidade autorizada  ') created $$,
+  $$ values ('Cidade autorizada'::text, '00000000-0000-0000-0000-000000000302'::uuid) $$,
+  'membro autorizado cria cidade normalizada'
+);
+
+do $$ begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000301', true);
+end $$;
+
+do $$ begin
+  perform public.create_city('Cidade Alfa');
+  perform public.create_city('Cidade Beta');
+  perform public.create_city('Cidade Gama');
+end $$;
+
+select throws_ok(
+  $$ select public.create_city('  cidade alfa  ') $$,
+  '23505',
+  null,
+  'nomes de cidade não duplicam ignorando caixa e espaços'
+);
+
+select throws_ok(
+  $$
+    select public.create_request_with_cities(
+      'Pedido sem cidade', null, '00000000-0000-0000-0000-000000000305',
+      null, 1024, array['growth'], '{}'::uuid[]
+    )
+  $$,
+  '23514',
+  null,
+  'criação exige ao menos uma cidade'
+);
+
+do $$ begin
+  perform public.create_request_with_cities(
+    'Pedido com cidades',
+    'Descrição inicial',
+    '00000000-0000-0000-0000-000000000305',
+    null,
+    1024,
+    array['growth'],
+    array(
+      select id
+      from public.cities
+      where name in ('Cidade Alfa', 'Cidade Beta')
+      order by name
+    )
+  );
+end $$;
+
+select throws_ok(
+  $$
+    select public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com cidades'),
+      'Pedido sem cidades', null, '00000000-0000-0000-0000-000000000305',
+      null, array['growth'], '{}'::uuid[]
+    )
+  $$,
+  '23514',
+  null,
+  'edição exige ao menos uma cidade'
+);
+
+do $$ begin
+  perform public.deactivate_city((select id from public.cities where name = 'Cidade Beta'));
+end $$;
+
+select results_eq(
+  $$
+    select city.active, count(link.request_id)::bigint
+    from public.cities city
+    left join public.request_cities link on link.city_id = city.id
+    where city.name = 'Cidade Beta'
+    group by city.active
+  $$,
+  $$ values (false, 1::bigint) $$,
+  'desativação preserva relacionamentos existentes'
+);
+
+select lives_ok(
+  $$
+    select public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com cidades'),
+      'Pedido com cidade inativa', null, '00000000-0000-0000-0000-000000000305',
+      null, array['growth'],
+      array(
+        select id
+        from public.cities
+        where name in ('Cidade Alfa', 'Cidade Beta')
+        order by name
+      )
+    )
+  $$,
+  'cidade inativa já vinculada permanece durante a edição'
+);
+
+do $$ begin
+  perform public.deactivate_city((select id from public.cities where name = 'Cidade Gama'));
+end $$;
+
+select throws_ok(
+  $$
+    select public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com cidade inativa'),
+      'Pedido com nova inativa', null, '00000000-0000-0000-0000-000000000305',
+      null, array['growth'],
+      array(
+        select id
+        from public.cities
+        where name in ('Cidade Alfa', 'Cidade Beta', 'Cidade Gama')
+        order by name
+      )
+    )
+  $$,
+  '23514',
+  null,
+  'cidade inativa nova é recusada durante a edição'
+);
+
+do $$ begin
+  perform public.create_request_with_cities(
+    'Pedido no topo',
+    null,
+    '00000000-0000-0000-0000-000000000305',
+    null,
+    1024,
+    array['growth'],
+    array[(select id from public.cities where name = 'Cidade Alfa')]
+  );
+end $$;
+
+select ok(
+  (
+    select created.position < min(older.position)
+    from public.requests created
+    join public.requests older
+      on older.column_id = created.column_id
+     and older.id <> created.id
+    where created.title = 'Pedido no topo'
+    group by created.position
+  ),
+  'nova solicitação fica acima de todas as anteriores na coluna de destino real'
+);
+
+do $$ begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000306', true);
+end $$;
+
+select throws_ok(
+  $$
+    select public.create_request_with_cities(
+      'Criação bloqueada vazia', null, '00000000-0000-0000-0000-000000000305',
+      null, 1024, array['growth'], '{}'::uuid[]
+    )
+  $$,
+  '42501',
+  null,
+  'criação sem permissão não revela array de cidades vazio'
+);
+
+select throws_ok(
+  $$
+    select public.create_request_with_cities(
+      'Criação bloqueada ausente', null, '00000000-0000-0000-0000-000000000305',
+      null, 1024, array['growth'], array['00000000-0000-0000-0000-000000000499'::uuid]
+    )
+  $$,
+  '42501',
+  null,
+  'criação sem permissão não revela cidade ausente'
+);
+
+select throws_ok(
+  $$
+    select public.create_request_with_cities(
+      'Criação bloqueada inativa', null, '00000000-0000-0000-0000-000000000305',
+      null, 1024, array['growth'],
+      array[(select id from public.cities where name = 'Cidade Beta')]
+    )
+  $$,
+  '42501',
+  null,
+  'criação sem permissão não revela cidade inativa'
+);
+
+select throws_ok(
+  $$
+    select public.create_request_with_cities(
+      'Criação bloqueada ativa', null, '00000000-0000-0000-0000-000000000305',
+      null, 1024, array['growth'],
+      array[(select id from public.cities where name = 'Cidade Alfa')]
+    )
+  $$,
+  '42501',
+  null,
+  'criação sem permissão também recusa cidade ativa'
+);
+
+select throws_ok(
+  $$
+    select public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com cidade inativa'),
+      'Edição bloqueada vazia', null, '00000000-0000-0000-0000-000000000305',
+      null, array['growth'], '{}'::uuid[]
+    )
+  $$,
+  '42501',
+  null,
+  'edição sem permissão não revela array de cidades vazio'
+);
+
+select throws_ok(
+  $$
+    select public.update_request_with_cities(
+      '00000000-0000-0000-0000-000000000498',
+      'Edição bloqueada ausente', null, '00000000-0000-0000-0000-000000000305',
+      null, array['growth'],
+      array[(select id from public.cities where name = 'Cidade Alfa')]
+    )
+  $$,
+  '42501',
+  null,
+  'edição sem permissão não revela solicitação ausente'
+);
+
+select throws_ok(
+  $$
+    select public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com cidade inativa'),
+      'Edição bloqueada cidade ausente', null, '00000000-0000-0000-0000-000000000305',
+      null, array['growth'], array['00000000-0000-0000-0000-000000000499'::uuid]
+    )
+  $$,
+  '42501',
+  null,
+  'edição sem permissão não revela cidade ausente'
+);
+
+select throws_ok(
+  $$
+    select public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com cidade inativa'),
+      'Edição bloqueada vínculo', null, '00000000-0000-0000-0000-000000000305',
+      null, array['growth'],
+      array[(select id from public.cities where name = 'Cidade Beta')]
+    )
+  $$,
+  '42501',
+  null,
+  'edição sem permissão não revela vínculo inativo existente'
+);
+
+do $$ begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000305', true);
+end $$;
+
+select ok(not public.has_city_management_permission(), 'membro aprovado sem permissão não gerencia cidades');
+
+select throws_ok(
+  $$ select public.create_city('Cidade bloqueada') $$,
+  '42501',
+  null,
+  'membro sem permissão não cria cidade'
+);
+
+select throws_ok(
+  $$ select public.rename_city((select id from public.cities where name = 'Cidade Alfa'), 'Cidade renomeada') $$,
+  '42501',
+  null,
+  'membro sem permissão não renomeia cidade'
+);
+
+select throws_ok(
+  $$ select public.deactivate_city((select id from public.cities where name = 'Cidade Alfa')) $$,
+  '42501',
+  null,
+  'membro sem permissão não desativa cidade'
+);
+
+select throws_ok(
+  $$ select public.reactivate_city((select id from public.cities where name = 'Cidade Beta')) $$,
+  '42501',
+  null,
+  'membro sem permissão não reativa cidade'
+);
+
+set local role authenticated;
+
+select throws_ok(
+  $$ insert into public.cities(name) values ('Cidade direta') $$,
+  '42501',
+  null,
+  'cliente não grava cidades diretamente'
+);
+
+select throws_ok(
+  $$
+    insert into public.request_cities(request_id, city_id)
+    values (
+      (select id from public.requests where title = 'Pedido no topo'),
+      (select id from public.cities where name = 'Cidade autorizada')
+    )
+  $$,
+  '42501',
+  null,
+  'cliente não grava vínculos diretamente'
+);
+
+reset role;
 
 select * from finish();
 rollback;

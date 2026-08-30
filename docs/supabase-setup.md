@@ -81,3 +81,69 @@ Não continue se o dry-run listar algo além de `202608290007_board_columns_lock
 8. Repita criação e movimentação, confira logs de Vercel e Supabase para erros 4xx/5xx e confirme que Realtime não duplica colunas ou cartões. Confirme também que `authenticated` já não possui INSERT direto em `public.requests` e que `move_request(uuid,text,numeric)` não existe.
 
 Em incidente ou falha antes do lockdown, mantenha `007` sem aplicar e corrija/republique a aplicação; não marque `007` como aplicada nem use `migration repair` para esconder uma execução incompleta. O `requests.status` legado continua nulo em listas de responsável e sincronizado com a chave da coluna fixa; ele não deve ser removido nesta entrega.
+
+## Rollout de cidades nas solicitações
+
+Este rollout parte de uma produção com `001`–`011` já aplicadas e exige duas fases. Use uma conexão direta de administrador em `SUPABASE_DB_URL`, faça o backup previsto pela política da equipe e confirme o projeto vinculado com `npx supabase migration list` antes de executar SQL.
+
+> **Proibido:** não execute um `npx supabase db push` completo ou sem revisar a fila antes de publicar a aplicação compatível com cidades. Um push cego pode aplicar `012` e `013` juntos, revogar os RPCs legados enquanto a aplicação antiga ainda os chama e interromper criação e edição de solicitações.
+
+### Fase 1 — migration 012, aplicação e smoke test
+
+1. Confirme que `001`–`011` estão alinhadas entre local e remoto e que `012` e `013` ainda estão pendentes. Se houver qualquer outra divergência, pare e investigue; não use `migration repair` para esconder schema não aplicado.
+2. Aplique **somente** a migration aditiva `012`, em uma transação. O comando abaixo nomeia o arquivo diretamente e não percorre a fila de migrations:
+
+```powershell
+psql $env:SUPABASE_DB_URL -X -v ON_ERROR_STOP=1 --single-transaction `
+  -f supabase/migrations/202608300012_cities_additive.sql
+```
+
+3. Depois de o `psql` terminar com código zero, registre `012` no histórico remoto e confira novamente a fila:
+
+```powershell
+npx supabase migration repair 202608300012 --status applied --linked
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+O dry-run deve listar somente `202608300013_cities_lockdown.sql`. Não execute o push: nesta etapa, `013` deve continuar pendente.
+
+4. Publique os commits da aplicação que usam exclusivamente `create_request_with_cities` e `update_request_with_cities`; aguarde o deploy ficar Ready antes de prosseguir.
+5. Execute o smoke test pré-lockdown com contas de owner, membro autorizado e membro sem permissão:
+   - crie uma solicitação com uma e com várias cidades, edite a seleção e recarregue a página para confirmar persistência;
+   - no admin, crie e renomeie uma cidade, desative/reative a cidade e confirme os bloqueios de permissão;
+   - em duas sessões, confirme que eventos Realtime de `cities` e `request_cities` atualizam nomes, status, vínculos, cartões e contagens sem duplicação;
+   - confira logs da aplicação e do Supabase e interrompa o rollout se houver erro inesperado 4xx/5xx.
+
+### Fase 2 — migration 013 e smoke test final
+
+6. Somente depois de o deploy e todo o smoke test da fase 1 passarem, aplique **somente** a migration `013`:
+
+```powershell
+psql $env:SUPABASE_DB_URL -X -v ON_ERROR_STOP=1 --single-transaction `
+  -f supabase/migrations/202608300013_cities_lockdown.sql
+```
+
+7. Depois de o `psql` terminar com código zero, registre `013` e confirme que não restou migration pendente:
+
+```powershell
+npx supabase migration repair 202608300013 --status applied --linked
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+8. Repita o smoke test de criação, edição, administração e Realtime. Confirme também que `authenticated` não executa mais `create_request(text,text,text,uuid,text,numeric,text[])` nem `update_request_content(uuid,text,text,text,uuid,text,text[])`, enquanto `create_request_with_cities(text,text,uuid,text,numeric,text[],uuid[])` e `update_request_with_cities(uuid,text,text,uuid,text,text[],uuid[])` continuam executáveis.
+
+### Recuperação e rollback
+
+- Se a aplicação ou o smoke test falhar antes de `013`, não aplique o lockdown. A migration `012` é aditiva: mantenha-a aplicada, restaure a versão anterior da aplicação se necessário e corrija o deploy antes de retomar. Não marque `013` como aplicada.
+- Se `013` já estiver aplicada e for indispensável restaurar temporariamente a aplicação antiga, reverta primeiro o efeito do lockdown em uma transação auditada:
+
+```sql
+begin;
+grant execute on function public.create_request(text,text,text,uuid,text,numeric,text[]) to authenticated;
+grant execute on function public.update_request_content(uuid,text,text,text,uuid,text,text[]) to authenticated;
+commit;
+```
+
+Depois, restaure a aplicação anterior e repita os smokes de criação e edição. Registre esse `GRANT` como uma nova migration de recuperação; não apague nem edite `013` e não use `migration repair` para declarar um estado diferente do schema real. A reabertura dos RPCs legados reduz as garantias de cidades e deve durar apenas até a aplicação city-aware voltar a ser publicada e um novo lockdown revisado ser aplicado.

@@ -3,6 +3,7 @@ import type { Announcements, DragEndEvent, ScreenReaderInstructions } from "@dnd
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoardColumn } from "@/features/columns/types";
+import type { City } from "@/features/cities/types";
 import type { EffectivePermissions, Profile, RequestRecord } from "@/features/requests/types";
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   dragCancel: undefined as unknown as () => void,
   sensors: [] as Array<{ options?: { activationConstraint?: { distance?: number } } }>,
   requestChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => Promise<void>,
+  cityChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => void,
+  requestCityChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => Promise<void>,
   accessibility: undefined as unknown as { announcements?: Announcements; screenReaderInstructions?: ScreenReaderInstructions },
 }));
 
@@ -41,7 +44,7 @@ vi.mock("@/components/kanban/kanban-column", () => ({
   KanbanColumn: ({ column, requests, onOpen }: { column: BoardColumn; requests: RequestRecord[]; onOpen: (request: RequestRecord) => void }) => (
     <section aria-label={`Lista ${column.name}`}>
       <h2>{column.name}</h2>
-      {requests.map((request) => <div key={request.id}><button type="button" onClick={() => onOpen(request)}>{request.title}</button><span>{request.assignee?.full_name ?? "—"}</span></div>)}
+      {requests.map((request) => <div key={request.id}><button type="button" onClick={() => onOpen(request)}>{request.title}</button><span>{request.assignee?.full_name ?? "—"}</span><span>{request.cities.length === 1 ? "Cidade" : "Cidades"}: {request.cities.map((city) => city.name).join(", ")}</span><span data-testid={`position-${request.id}`}>{request.position}</span></div>)}
     </section>
   ),
 }));
@@ -78,6 +81,11 @@ const profiles: Profile[] = [
   { id: "22222222-2222-4222-8222-222222222222", full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
 ];
 
+const cities: City[] = [
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+  { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+];
+
 const columns: BoardColumn[] = [
   { id: "column-pending", name: "Pendente", kind: "system", system_key: "pending", assignee_id: null, position: 1024, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
   { id: "column-progress", name: "Em progresso", kind: "system", system_key: "in_progress", assignee_id: null, position: 2048, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
@@ -89,7 +97,7 @@ const sourceRequest: RequestRecord = {
   id: "request-source",
   title: "Pedido do responsável",
   description: null,
-  requester_name: "Ana",
+  cities: [cities[0]],
   assigned_to: profiles[0].id,
   external_url: null,
   tags: ["hub"],
@@ -105,7 +113,7 @@ const sourceRequest: RequestRecord = {
 const pendingFirst: RequestRecord = { ...sourceRequest, id: "request-first", title: "Primeiro pendente", column_id: "column-pending", status: "pending", position: 1024 };
 const pendingLast: RequestRecord = { ...sourceRequest, id: "request-last", title: "Último pendente", column_id: "column-pending", status: "pending", position: 3072 };
 
-const basePermissions: EffectivePermissions = { canCreate: false, canEdit: false, canMove: true, canDelete: false, canManageColumns: false };
+const basePermissions: EffectivePermissions = { canCreate: false, canEdit: false, canMove: true, canDelete: false, canManageColumns: false, canManageCities: false };
 
 function boardRequests(columnName: string) {
   return within(screen.getByRole("region", { name: `Lista ${columnName}` }));
@@ -115,6 +123,11 @@ function drag(activeId: string, overId: string) {
   act(() => {
     void mocks.dragEnd({ active: { id: activeId }, over: { id: overId } } as DragEndEvent);
   });
+}
+
+function selectFirstCity() {
+  fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+  fireEvent.click(screen.getByRole("option", { name: cities[0].name }));
 }
 
 function deferred<T>() {
@@ -145,6 +158,22 @@ async function emitRequestDelete(requestId: string) {
   });
 }
 
+function emitCityUpdate(city: City) {
+  act(() => {
+    mocks.cityChange({ eventType: "UPDATE", old: { id: city.id }, new: { ...city } });
+  });
+}
+
+async function emitRequestCityChange(eventType: "INSERT" | "UPDATE" | "DELETE", requestId: string) {
+  await act(async () => {
+    await mocks.requestCityChange({
+      eventType,
+      old: eventType === "INSERT" ? {} : { request_id: requestId, city_id: cities[0].id },
+      new: eventType === "DELETE" ? {} : { request_id: requestId, city_id: cities[1].id },
+    });
+  });
+}
+
 beforeEach(() => {
   mocks.createRequest.mockReset();
   mocks.updateRequest.mockReset();
@@ -157,6 +186,8 @@ beforeEach(() => {
     const channel = {
       on: vi.fn((_event: string, _filter: Record<string, unknown>, callback: typeof mocks.requestChange) => {
         if (name === "requests-board") mocks.requestChange = callback;
+        if (name === "cities-board") mocks.cityChange = callback;
+        if (name === "request-cities-board") mocks.requestCityChange = callback;
         return channel;
       }),
       subscribe: vi.fn(() => channel),
@@ -171,12 +202,200 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("KanbanBoard city realtime", () => {
+  it("substitui a cidade por UUID em todos os cartões e relações sem duplicar linhas", async () => {
+    const relatedRequest = { ...sourceRequest, id: "request-related", title: "Outra solicitação", position: 512 };
+    render(<KanbanBoard initialRequests={[sourceRequest, relatedRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    const updatedCity = { ...cities[0], name: "Santa Luzia Nova", active: false };
+    emitCityUpdate(updatedCity);
+    emitCityUpdate(updatedCity);
+
+    expect(await screen.findAllByText("Cidade: Santa Luzia Nova")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: sourceRequest.title })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: relatedRequest.title })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: sourceRequest.title }));
+    expect(screen.getByText("Santa Luzia Nova")).toBeInTheDocument();
+    expect(screen.getByText("Desativada")).toBeInTheDocument();
+  });
+
+  it.each(["INSERT", "UPDATE", "DELETE"] as const)("recarrega e faz upsert somente da solicitação afetada em request_cities %s", async (eventType) => {
+    const unaffected = { ...sourceRequest, id: "request-unaffected", title: "Não afetada", position: 512 };
+    const canonical = { ...sourceRequest, title: `Canônica ${eventType}`, cities: [cities[0], cities[1]], position: 4096 };
+    mocks.getRequest.mockResolvedValue(canonical);
+    render(<KanbanBoard initialRequests={[sourceRequest, unaffected]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    await emitRequestCityChange(eventType, sourceRequest.id);
+
+    expect(mocks.getRequest).toHaveBeenCalledOnce();
+    expect(mocks.getRequest).toHaveBeenCalledWith(sourceRequest.id);
+    expect(screen.getByRole("button", { name: canonical.title })).toBeInTheDocument();
+    expect(screen.getByText("Cidades: Santa Luzia, Belo Horizonte")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: unaffected.title })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: canonical.title })).toHaveLength(1);
+  });
+
+  it("mantém o upsert idempotente quando o mesmo relacionamento é notificado novamente", async () => {
+    const canonical = { ...sourceRequest, cities: [cities[0], cities[1]] };
+    mocks.getRequest.mockResolvedValue(canonical);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    await emitRequestCityChange("INSERT", sourceRequest.id);
+    await emitRequestCityChange("INSERT", sourceRequest.id);
+
+    expect(mocks.getRequest).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByRole("button", { name: sourceRequest.title })).toHaveLength(1);
+    expect(screen.getAllByText("Cidades: Santa Luzia, Belo Horizonte")).toHaveLength(1);
+  });
+
+  it("não deixa refetch antigo de relacionamento reverter uma cidade atualizada depois", async () => {
+    const relationshipRead = deferred<RequestRecord>();
+    mocks.getRequest.mockReturnValue(relationshipRead.promise);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    let relationshipEvent = Promise.resolve();
+    act(() => {
+      relationshipEvent = mocks.requestCityChange({
+        eventType: "INSERT",
+        old: {},
+        new: { request_id: sourceRequest.id, city_id: cities[1].id },
+      });
+    });
+    await waitFor(() => expect(mocks.getRequest).toHaveBeenCalledWith(sourceRequest.id));
+
+    const updatedCity = { ...cities[0], name: "Santa Luzia Atualizada", active: false };
+    emitCityUpdate(updatedCity);
+    expect(screen.getByText("Cidade: Santa Luzia Atualizada")).toBeInTheDocument();
+
+    await act(async () => {
+      relationshipRead.resolve({ ...sourceRequest, cities: [cities[0], cities[1]] });
+      await relationshipRead.promise;
+      await relationshipEvent;
+    });
+
+    expect(screen.getByText("Cidades: Santa Luzia Atualizada, Belo Horizonte")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: sourceRequest.title }));
+    expect(screen.getByText("Santa Luzia Atualizada, Belo Horizonte")).toBeInTheDocument();
+    expect(screen.getByText("Desativada")).toBeInTheDocument();
+  });
+
+  it("não deixa resposta atrasada de edição reverter cidade nem remover nova associação", async () => {
+    const updateResponse = deferred<RequestRecord>();
+    mocks.updateRequest.mockReturnValue(updateResponse.promise);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canEdit: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: sourceRequest.title }));
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+    fireEvent.click(screen.getByRole("option", { name: cities[1].name }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(mocks.updateRequest).toHaveBeenCalledOnce());
+
+    const updatedCity = { ...cities[0], name: "Santa Luzia Externa", active: false };
+    emitCityUpdate(updatedCity);
+    expect(screen.getByText("Cidade: Santa Luzia Externa")).toBeInTheDocument();
+
+    await act(async () => {
+      updateResponse.resolve({ ...sourceRequest, cities: [cities[0], cities[1]] });
+      await updateResponse.promise;
+    });
+
+    expect(screen.getByText("Cidades: Santa Luzia Externa, Belo Horizonte")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: sourceRequest.title }));
+    expect(screen.getByText("Santa Luzia Externa, Belo Horizonte")).toBeInTheDocument();
+    expect(screen.getByText("Desativada")).toBeInTheDocument();
+  });
+
+  it("não deixa resposta atrasada de movimento reverter cidade, destino ou posição", async () => {
+    const moveResponse = deferred<RequestRecord>();
+    mocks.moveRequest.mockReturnValue(moveResponse.promise);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    drag(sourceRequest.id, "column-pending");
+    await waitFor(() => expect(mocks.moveRequest).toHaveBeenCalledWith(sourceRequest.id, "column-pending", 1024));
+    const updatedCity = { ...cities[0], name: "Santa Luzia em Tempo Real", active: false };
+    emitCityUpdate(updatedCity);
+
+    await act(async () => {
+      moveResponse.resolve({ ...sourceRequest, cities: [cities[0]], column_id: "column-pending", status: "pending", position: 1024 });
+      await moveResponse.promise;
+    });
+
+    expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument();
+    expect(boardRequests("Pendente").getByText("Cidade: Santa Luzia em Tempo Real")).toBeInTheDocument();
+    expect(screen.getByTestId(`position-${sourceRequest.id}`)).toHaveTextContent("1024");
+    fireEvent.click(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title }));
+    expect(screen.getByText("Santa Luzia em Tempo Real")).toBeInTheDocument();
+    expect(screen.getByText("Desativada")).toBeInTheDocument();
+  });
+
+  it("normaliza a cidade ao criar sem perder a posição canônica no topo", async () => {
+    const createResponse = deferred<RequestRecord>();
+    const older = { ...sourceRequest, id: "request-older-city", title: "Demanda antiga", position: 1024 };
+    const created = { ...sourceRequest, id: "request-created-city", title: "Demanda nova", position: 512 };
+    mocks.createRequest.mockReturnValue(createResponse.promise);
+    render(<KanbanBoard initialRequests={[older]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
+    fireEvent.change(screen.getByLabelText("Título"), { target: { value: created.title } });
+    selectFirstCity();
+    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledOnce());
+
+    const updatedCity = { ...cities[0], name: "Santa Luzia Recente", active: false };
+    emitCityUpdate(updatedCity);
+    await act(async () => {
+      createResponse.resolve(created);
+      await createResponse.promise;
+    });
+
+    expect(boardRequests("Lucifer").getAllByRole("button").map((button) => button.textContent)).toEqual([created.title, older.title]);
+    expect(boardRequests("Lucifer").getAllByText("Cidade: Santa Luzia Recente")).toHaveLength(2);
+    expect(boardRequests("Lucifer").queryByText("Cidade: Santa Luzia")).not.toBeInTheDocument();
+    expect(screen.getByTestId(`position-${created.id}`)).toHaveTextContent("512");
+  });
+
+  it("normaliza a cidade ao fazer rollback de um movimento não confirmado", async () => {
+    const moveResponse = deferred<RequestRecord>();
+    mocks.moveRequest.mockReturnValue(moveResponse.promise);
+    mocks.getRequest.mockRejectedValue(new Error("indisponível"));
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+
+    drag(sourceRequest.id, "column-pending");
+    await waitFor(() => expect(mocks.moveRequest).toHaveBeenCalledOnce());
+    const updatedCity = { ...cities[0], name: "Santa Luzia no Rollback", active: false };
+    emitCityUpdate(updatedCity);
+
+    await act(async () => {
+      moveResponse.reject(new Error("timeout"));
+      await expect(moveResponse.promise).rejects.toThrow("timeout");
+    });
+
+    await waitFor(() => expect(boardRequests("Lucifer").getByText("Cidade: Santa Luzia no Rollback")).toBeInTheDocument());
+    expect(screen.getByTestId(`position-${sourceRequest.id}`)).toHaveTextContent("4096");
+  });
+
+  it("remove todos os canais criados e ignora callbacks retidos ao desmontar", async () => {
+    const { unmount } = render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    const staleRelationshipCallback = mocks.requestCityChange;
+
+    unmount();
+    await staleRelationshipCallback({ eventType: "INSERT", old: {}, new: { request_id: sourceRequest.id, city_id: cities[0].id } });
+
+    expect(mocks.removeChannel).toHaveBeenCalledTimes(4);
+    expect(new Set(mocks.removeChannel.mock.calls.map(([channel]) => channel))).toHaveProperty("size", 4);
+    expect(mocks.getRequest).not.toHaveBeenCalled();
+  });
+});
+
 describe("KanbanBoard movement", () => {
   it("move otimisticamente para uma coluna vazia e restaura o cartão inteiro quando a RPC falha", async () => {
     let rejectMove: (error: Error) => void = () => undefined;
     mocks.moveRequest.mockImplementation(() => new Promise<RequestRecord>((_, reject) => { rejectMove = reject; }));
     mocks.getRequest.mockRejectedValue(new Error("offline"));
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, "column-pending");
 
@@ -193,7 +412,7 @@ describe("KanbanBoard movement", () => {
   it("ignora uma segunda tentativa enquanto o cartão já está sendo persistido", async () => {
     const firstMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(firstMove.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
@@ -214,7 +433,7 @@ describe("KanbanBoard movement", () => {
     mocks.moveRequest
       .mockResolvedValueOnce({ ...sourceRequest, column_id: "column-pending", status: "pending", position: 1024 })
       .mockResolvedValueOnce({ ...sourceRequest, column_id: "column-completed", status: "completed", position: 1024 });
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
@@ -228,7 +447,7 @@ describe("KanbanBoard movement", () => {
     const pendingMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
     mocks.getRequest.mockRejectedValue(new Error("offline"));
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
@@ -248,7 +467,7 @@ describe("KanbanBoard movement", () => {
     const older = { ...sourceRequest, title: "Evento antigo", column_id: "column-completed", status: "completed" as const, position: 1024 };
     const latest = { ...sourceRequest, title: "Evento mais novo", column_id: "column-pending", status: "pending" as const, position: 1024 };
     mocks.getRequest.mockReturnValueOnce(firstRead.promise).mockReturnValueOnce(secondRead.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     act(() => { void mocks.requestChange({ eventType: "UPDATE", old: {}, new: { id: sourceRequest.id } }); });
     await waitFor(() => expect(mocks.getRequest).toHaveBeenCalledTimes(1));
@@ -273,7 +492,7 @@ describe("KanbanBoard movement", () => {
     const secondRead = deferred<RequestRecord>();
     const older = { ...sourceRequest, title: "Evento antigo tardio", column_id: "column-completed", status: "completed" as const, position: 1024 };
     mocks.getRequest.mockReturnValueOnce(firstRead.promise).mockReturnValueOnce(secondRead.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     let firstEvent = Promise.resolve();
     let secondEvent = Promise.resolve();
@@ -302,7 +521,7 @@ describe("KanbanBoard movement", () => {
     const moved = { ...sourceRequest, column_id: "column-pending", status: "pending" as const, position: 1024 };
     mocks.getRequest.mockReturnValue(realtimeRead.promise);
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     let realtimeEvent = Promise.resolve();
     act(() => { realtimeEvent = mocks.requestChange({ eventType: "UPDATE", old: {}, new: { id: sourceRequest.id } }); });
@@ -330,7 +549,7 @@ describe("KanbanBoard movement", () => {
     const moved = { ...sourceRequest, column_id: "column-pending", status: "pending" as const, position: 1024 };
     mocks.getRequest.mockReturnValue(realtimeRead.promise);
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     let realtimeEvent = Promise.resolve();
     act(() => { realtimeEvent = mocks.requestChange({ eventType: "UPDATE", old: {}, new: { id: sourceRequest.id } }); });
@@ -359,7 +578,7 @@ describe("KanbanBoard movement", () => {
     const canonical = { ...sourceRequest, column_id: "column-pending", status: "pending" as const, position: 1024 };
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
     mocks.getRequest.mockResolvedValue(canonical);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Pendente" }));
@@ -381,7 +600,7 @@ describe("KanbanBoard movement", () => {
     const realtimeRequest = { ...sourceRequest, assigned_to: profiles[1].id, assignee: { id: profiles[1].id, full_name: profiles[1].full_name }, column_id: "column-completed", status: "completed" as const, position: 1024 };
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
     mocks.getRequest.mockResolvedValue(realtimeRequest);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
@@ -401,7 +620,7 @@ describe("KanbanBoard movement", () => {
     const canonical = { ...sourceRequest, assigned_to: profiles[1].id, assignee: { id: profiles[1].id, full_name: profiles[1].full_name }, column_id: "column-completed", status: "completed" as const, position: 1024 };
     mocks.moveRequest.mockRejectedValue(new Error("timeout"));
     mocks.getRequest.mockResolvedValue(canonical);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, "column-pending");
 
@@ -413,7 +632,7 @@ describe("KanbanBoard movement", () => {
   it("fecha o diálogo no DELETE Realtime e não ressuscita o cartão após sucesso pendente", async () => {
     const pendingMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Pendente" }));
@@ -434,7 +653,7 @@ describe("KanbanBoard movement", () => {
     const pendingMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
     mocks.deleteRequest.mockRejectedValue(new Error("não deveria chamar"));
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
@@ -456,7 +675,7 @@ describe("KanbanBoard movement", () => {
     const pendingMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
     mocks.getRequest.mockRejectedValue(new Error("offline"));
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
@@ -476,7 +695,7 @@ describe("KanbanBoard movement", () => {
   it("bloqueia drag sem mutação otimista enquanto a exclusão está pendente", async () => {
     const pendingDelete = deferred<void>();
     mocks.deleteRequest.mockReturnValue(pendingDelete.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
@@ -492,7 +711,7 @@ describe("KanbanBoard movement", () => {
   it("mostra falha de exclusão, libera a UI e aceita uma operação posterior", async () => {
     mocks.deleteRequest.mockRejectedValue(new Error("offline"));
     mocks.moveRequest.mockResolvedValue({ ...sourceRequest, column_id: "column-pending", status: "pending", position: 1024 });
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canDelete: true }} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
@@ -507,7 +726,7 @@ describe("KanbanBoard movement", () => {
   it("mantém a ação fixa aberta quando outro movimento do cartão já está pendente", async () => {
     const pendingMove = deferred<RequestRecord>();
     mocks.moveRequest.mockReturnValue(pendingMove.promise);
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, "column-pending");
     await waitFor(() => expect(boardRequests("Pendente").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument());
@@ -521,7 +740,7 @@ describe("KanbanBoard movement", () => {
 
   it("insere antes do cartão alvo pela posição e preserva a relação do responsável no retorno", async () => {
     mocks.moveRequest.mockResolvedValue({ ...sourceRequest, column_id: "column-pending", status: "pending", position: 2048, assignee: undefined });
-    render(<KanbanBoard initialRequests={[pendingFirst, pendingLast, sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[pendingFirst, pendingLast, sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     drag(sourceRequest.id, pendingLast.id);
 
@@ -535,7 +754,7 @@ describe("KanbanBoard movement", () => {
     const moving = { ...sourceRequest, column_id: "column-pending", status: "pending" as const, position: 1024 };
     const target = { ...pendingLast, position: 2048 };
     mocks.moveRequest.mockResolvedValue({ ...moving, position: 3072 });
-    render(<KanbanBoard initialRequests={[moving, target]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[moving, target]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     act(() => {
       void mocks.dragEnd({
@@ -551,7 +770,7 @@ describe("KanbanBoard movement", () => {
     const moving = { ...sourceRequest, column_id: "column-pending", status: "pending" as const, position: 1024 };
     const target = { ...pendingLast, position: 2048 };
     mocks.moveRequest.mockResolvedValue({ ...moving, position: 3072 });
-    render(<KanbanBoard initialRequests={[moving, target]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[moving, target]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     act(() => {
       void mocks.dragEnd({
@@ -564,7 +783,7 @@ describe("KanbanBoard movement", () => {
   });
 
   it("ignora o arraste quando o usuário não tem permissão", () => {
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canMove: false }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canMove: false }} />);
 
     drag(sourceRequest.id, "column-pending");
 
@@ -574,7 +793,7 @@ describe("KanbanBoard movement", () => {
 
   it("resolve a ação fixa e usa o responsável canônico retornado", async () => {
     mocks.moveRequest.mockResolvedValue({ ...sourceRequest, assigned_to: profiles[1].id, column_id: "column-completed", status: "completed", position: 1024, assignee: undefined });
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Concluído" }));
@@ -586,7 +805,7 @@ describe("KanbanBoard movement", () => {
   });
 
   it("mostra um erro em português se a coluna fixa não existir", async () => {
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns.filter((column) => column.system_key !== "completed")} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns.filter((column) => column.system_key !== "completed")} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Concluído" }));
@@ -600,16 +819,16 @@ describe("KanbanBoard save routing", () => {
   it("usa a posição inicial estável e renderiza o destino canônico retornado na criação", async () => {
     const created = { ...sourceRequest, id: "request-created", title: "Nova demanda", column_id: "column-lucifer", position: 1024, assignee: undefined };
     mocks.createRequest.mockResolvedValue(created);
-    render(<KanbanBoard initialRequests={[]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
+    render(<KanbanBoard initialRequests={[]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
-    fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Mariana" } });
+    selectFirstCity();
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
-    await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledWith({ title: "Nova demanda", description: "", requesterName: "Mariana", assignedTo: profiles[0].id, externalUrl: "", tags: ["hub"] }, "owner", 1024));
+    await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledWith({ title: "Nova demanda", description: "", cityIds: [cities[0].id], assignedTo: profiles[0].id, externalUrl: "", tags: ["hub"] }, "owner", 1024));
     expect(boardRequests("Lucifer").getByRole("button", { name: "Nova demanda" })).toBeInTheDocument();
     expect(boardRequests("Lucifer").getByText("Lucifer", { selector: "span" })).toBeInTheDocument();
     const notice = await screen.findByText("Solicitação criada.");
@@ -619,9 +838,28 @@ describe("KanbanBoard save routing", () => {
     expect(screen.queryByText("Solicitação criada.")).not.toBeInTheDocument();
   });
 
+  it("insere a criação no topo pela posição canônica sem recalcular cartões antigos", async () => {
+    const older = { ...sourceRequest, id: "request-older", title: "Demanda antiga", position: 1024 };
+    const created = { ...sourceRequest, id: "request-created-top", title: "Demanda nova", position: 512 };
+    mocks.createRequest.mockResolvedValue(created);
+    render(<KanbanBoard initialRequests={[older]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
+    fireEvent.change(screen.getByLabelText("Título"), { target: { value: created.title } });
+    selectFirstCity();
+    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(boardRequests("Lucifer").getByRole("button", { name: created.title })).toBeInTheDocument());
+    expect(boardRequests("Lucifer").getAllByRole("button").map((button) => button.textContent)).toEqual([created.title, older.title]);
+    expect(screen.getByTestId(`position-${created.id}`)).toHaveTextContent("512");
+    expect(screen.getByTestId(`position-${older.id}`)).toHaveTextContent("1024");
+  });
+
   it("confia no column_id retornado ao editar e recompõe a relação do novo responsável", async () => {
     mocks.updateRequest.mockResolvedValue({ ...sourceRequest, assigned_to: profiles[1].id, column_id: "column-pending", status: "pending", assignee: undefined });
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canEdit: true }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canEdit: true }} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
@@ -637,7 +875,7 @@ describe("KanbanBoard save routing", () => {
     const realtimeRequest = { ...sourceRequest, assigned_to: profiles[1].id, assignee: { id: profiles[1].id, full_name: profiles[1].full_name } };
     mocks.getRequest.mockResolvedValue(realtimeRequest);
     mocks.updateRequest.mockResolvedValue({ ...realtimeRequest, title: "Título atualizado" });
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canEdit: true }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canEdit: true }} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
@@ -654,14 +892,14 @@ describe("KanbanBoard save routing", () => {
       ...sourceRequest,
       title: "Título remoto",
       description: "Descrição remota",
-      requester_name: "Solicitante remoto",
+      cities: [cities[1]],
       assigned_to: profiles[1].id,
       external_url: "https://example.com/remoto",
       assignee: { id: profiles[1].id, full_name: profiles[1].full_name },
     };
     mocks.getRequest.mockResolvedValue(realtimeRequest);
     mocks.updateRequest.mockResolvedValue({ ...realtimeRequest, title: "Título local" });
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canEdit: true }} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canEdit: true }} />);
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
@@ -670,7 +908,8 @@ describe("KanbanBoard save routing", () => {
 
     expect(screen.getByLabelText("Título")).toHaveValue("Título local");
     expect(screen.getByLabelText("Descrição")).toHaveValue("Descrição remota");
-    expect(screen.getByLabelText("Solicitante")).toHaveValue("Solicitante remoto");
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+    expect(screen.getByRole("option", { name: cities[1].name })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("Responsável")).toHaveValue(profiles[1].id);
     expect(screen.getByLabelText("Link externo")).toHaveValue("https://example.com/remoto");
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
@@ -678,7 +917,7 @@ describe("KanbanBoard save routing", () => {
     await waitFor(() => expect(mocks.updateRequest).toHaveBeenCalledWith(sourceRequest.id, {
       title: "Título local",
       description: "Descrição remota",
-      requesterName: "Solicitante remoto",
+      cityIds: [cities[1].id],
       assignedTo: profiles[1].id,
       externalUrl: "https://example.com/remoto",
       tags: ["hub"],
@@ -692,11 +931,11 @@ describe("KanbanBoard save routing", () => {
     const staleRpcRequest = { ...sourceRequest, id: requestId, title: "Versão RPC", assignee: undefined };
     mocks.createRequest.mockReturnValue(createResponse.promise);
     mocks.getRequest.mockResolvedValue(realtimeRequest);
-    render(<KanbanBoard initialRequests={[]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
+    render(<KanbanBoard initialRequests={[]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Versão RPC" } });
-    fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Mariana" } });
+    selectFirstCity();
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
@@ -719,11 +958,11 @@ describe("KanbanBoard save routing", () => {
     const realtimeRequest = { ...sourceRequest, id: requestId, title: "Criada em Realtime" };
     mocks.createRequest.mockReturnValue(createResponse.promise);
     mocks.getRequest.mockResolvedValue(realtimeRequest);
-    render(<KanbanBoard initialRequests={[]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
+    render(<KanbanBoard initialRequests={[]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canCreate: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Resposta atrasada" } });
-    fireEvent.change(screen.getByLabelText("Solicitante"), { target: { value: "Mariana" } });
+    selectFirstCity();
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
@@ -743,13 +982,13 @@ describe("KanbanBoard save routing", () => {
 
 describe("KanbanBoard accessibility", () => {
   it("exige deslocamento antes de iniciar o arraste com o mouse", () => {
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     expect(mocks.sensors[0]?.options?.activationConstraint?.distance).toBe(8);
   });
 
   it("mostra uma prévia flutuante apenas durante o arraste", () => {
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     expect(screen.queryByTestId("drag-overlay")).not.toBeInTheDocument();
     act(() => mocks.dragStart({ active: { id: sourceRequest.id } }));
@@ -760,7 +999,7 @@ describe("KanbanBoard accessibility", () => {
   });
 
   it("fornece instruções e anúncios de arraste em português com nomes", () => {
-    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     expect(mocks.accessibility.screenReaderInstructions?.draggable).toMatch(/barra de espaço/i);
     expect(mocks.accessibility.announcements?.onDragStart({ active: { id: sourceRequest.id } } as Parameters<Announcements["onDragStart"]>[0])).toContain(sourceRequest.title);

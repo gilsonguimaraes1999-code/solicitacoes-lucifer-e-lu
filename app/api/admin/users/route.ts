@@ -40,6 +40,7 @@ export async function GET() {
         can_move_requests: permission?.can_move_requests ?? false,
         can_delete_requests: permission?.can_delete_requests ?? false,
         can_manage_columns: permission?.can_manage_columns ?? false,
+        can_manage_cities: permission?.can_manage_cities ?? false,
       },
     };
   }));

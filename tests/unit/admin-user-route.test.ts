@@ -51,13 +51,14 @@ describe("PATCH /api/admin/users/[id]", () => {
       : { upsert: mocks.upsert });
   });
 
-  it("cria permissões ausentes com os cinco campos", async () => {
+  it("cria permissões ausentes incluindo o gerenciamento de cidades", async () => {
     const permissions = {
       can_create_requests: true,
       can_edit_requests: false,
       can_move_requests: true,
       can_delete_requests: false,
       can_manage_columns: true,
+      can_manage_cities: true,
     };
     const response = await PATCH(new Request("http://localhost/api/admin/users/member-id", {
       method: "PATCH",

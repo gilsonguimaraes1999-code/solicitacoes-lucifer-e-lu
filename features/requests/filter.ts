@@ -11,6 +11,6 @@ export function filterBoard(requests: RequestRecord[], selectedColumnId: string,
     if (selectedColumnId !== "all" && request.column_id !== selectedColumnId) return false;
     if (selectedTags.length > 0 && !selectedTags.some((tag) => request.tags?.includes(tag))) return false;
     if (!normalizedQuery) return true;
-    return [request.title, request.requester_name, request.assignee?.full_name ?? ""].some((value) => normalize(value).includes(normalizedQuery));
+    return [request.title, request.cities.map((city) => city.name).join(" "), request.assignee?.full_name ?? ""].some((value) => normalize(value).includes(normalizedQuery));
   });
 }

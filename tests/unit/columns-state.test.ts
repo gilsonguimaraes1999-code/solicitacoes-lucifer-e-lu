@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { columnsReducer } from "@/features/columns/reducer";
 import { filterBoard } from "@/features/requests/filter";
 import type { BoardColumn } from "@/features/columns/types";
+import type { City } from "@/features/cities/types";
 import type { RequestRecord } from "@/features/requests/types";
+
+const santaLuzia: City = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+const beloHorizonte: City = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", active: true, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
 
 const columns: BoardColumn[] = [
   { id: "assignee-z", name: "Zoe", kind: "assignee", system_key: null, assignee_id: "assignee-z", position: 9, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
@@ -13,8 +17,8 @@ const columns: BoardColumn[] = [
 ];
 
 const requests: RequestRecord[] = [
-  { id: "request-1", title: "Pedido de acesso", description: null, requester_name: "Mariana", assigned_to: "assignee-z", external_url: null, tags: ["loja", "growth"], status: "pending", column_id: "assignee-z", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-z", full_name: "Lucifer" } },
-  { id: "request-2", title: "Outro cartão", description: null, requester_name: "Pedro", assigned_to: "assignee-a", external_url: null, tags: ["jogo"], status: "completed", column_id: "completed", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-a", full_name: "Ana" } },
+  { id: "request-1", title: "Pedido de acesso", description: null, cities: [santaLuzia], assigned_to: "assignee-z", external_url: null, tags: ["loja", "growth"], status: "pending", column_id: "assignee-z", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-z", full_name: "Lucifer" } },
+  { id: "request-2", title: "Outro cartão", description: null, cities: [beloHorizonte], assigned_to: "assignee-a", external_url: null, tags: ["jogo"], status: "completed", column_id: "completed", position: 1024, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "assignee-a", full_name: "Ana" } },
 ];
 
 describe("columnsReducer", () => {
@@ -64,7 +68,7 @@ describe("filterBoard", () => {
   it("filtra primeiro a coluna e depois os campos pesquisáveis normalizados", () => {
     expect(filterBoard(requests, "assignee-z", "pedido")).toEqual([requests[0]]);
     expect(filterBoard(requests, "all", "  lUcIfEr ")).toEqual([requests[0]]);
-    expect(filterBoard(requests, "completed", "Mariana")).toEqual([]);
+    expect(filterBoard(requests, "completed", "belo horizonte")).toEqual([requests[1]]);
   });
 
   it("combina coluna, pesquisa e qualquer uma das tags selecionadas", () => {

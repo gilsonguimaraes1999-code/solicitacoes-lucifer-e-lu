@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
+import { effectivePermissions } from "@/lib/permissions";
 import type { Profile, UserPermissions } from "@/features/requests/types";
 
 export async function requireUser() {
@@ -29,4 +30,11 @@ export async function requireOwner() {
   const session = await requireApprovedProfile();
   if (session.profile.role !== "owner") redirect("/dashboard");
   return session;
+}
+
+export async function requireCityManager() {
+  const session = await requireApprovedProfile();
+  const effective = effectivePermissions(session.profile, session.permissions);
+  if (!effective.canManageCities) redirect("/dashboard");
+  return { ...session, effective };
 }

@@ -13,6 +13,7 @@ import { RequestDialog } from "@/components/requests/request-dialog";
 import { createBoardColumn, deleteBoardColumn, renameBoardColumn, reorderBoardColumn } from "@/features/columns/api";
 import { columnsReducer, type ColumnsEvent } from "@/features/columns/reducer";
 import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
+import type { City } from "@/features/cities/types";
 import { createRequest, deleteRequest, getRequest, moveRequest, updateRequest } from "@/features/requests/api";
 import { filterBoard } from "@/features/requests/filter";
 import { positionBetween, sortRequests } from "@/features/requests/ordering";
@@ -25,6 +26,7 @@ import { createBrowserClient } from "@/lib/supabase/browser";
 interface KanbanBoardProps {
   initialRequests: RequestRecord[];
   initialColumns: BoardColumn[];
+  cities: City[];
   profiles: Profile[];
   currentUserId: string;
   permissions: EffectivePermissions;
@@ -67,15 +69,24 @@ function enrichAssignee(request: RequestRecord, profiles: Profile[]): RequestRec
   };
 }
 
-function mergeCanonicalRequest(latest: RequestRecord, canonical: RequestRecord, profiles: Profile[]) {
-  return enrichAssignee({ ...latest, ...canonical }, profiles);
+function normalizeRequestCities(request: RequestRecord, citiesById: ReadonlyMap<string, City>, profiles: Profile[]) {
+  return enrichAssignee({
+    ...request,
+    cities: request.cities.map((city) => citiesById.get(city.id) ?? city),
+  }, profiles);
 }
 
-export function KanbanBoard({ initialRequests, initialColumns, profiles, currentUserId, permissions }: KanbanBoardProps) {
+function mergeCanonicalRequest(latest: RequestRecord, canonical: RequestRecord, citiesById: ReadonlyMap<string, City>, profiles: Profile[]) {
+  return normalizeRequestCities({ ...latest, ...canonical }, citiesById, profiles);
+}
+
+export function KanbanBoard({ initialRequests, initialColumns, cities, profiles, currentUserId, permissions }: KanbanBoardProps) {
   const sortedInitialRequests = useMemo(() => requestsReducer([], { type: "snapshot", requests: initialRequests }), [initialRequests]);
   const sortedInitialColumns = useMemo(() => columnsReducer([], { type: "snapshot", columns: initialColumns }), [initialColumns]);
   const [requests, rawDispatch] = useReducer(requestsReducer, sortedInitialRequests);
   const [columns, rawDispatchColumns] = useReducer(columnsReducer, sortedInitialColumns);
+  const [cityState, setCityState] = useState(() => [...new Map(cities.map((city) => [city.id, city])).values()]);
+  const citiesByIdRef = useRef(new Map(cities.map((city) => [city.id, city])));
   const [selected, setSelected] = useState<RequestRecord | null | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [selectedColumn, setSelectedColumn] = useState("all");
@@ -175,7 +186,32 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
 
   useEffect(() => {
     const supabase = createBrowserClient();
+    let mounted = true;
+    async function reconcileRequest(requestId: string, eventType?: "insert" | "update") {
+      if (!mounted || tombstonesRef.current.has(requestId)) return;
+      const eventVersion = advanceRequestRealtimeVersion(requestId);
+      const operationVersionAtReceipt = currentRequestVersion(requestId);
+      try {
+        const canonical = await getRequest(requestId);
+        if (!mounted || tombstonesRef.current.has(requestId) || !isCurrentRequestRealtimeVersion(requestId, eventVersion)) return;
+        const pendingOperation = pendingOperationsRef.current.get(requestId);
+        const confirmsPendingMove = pendingOperation?.kind === "move"
+          && canonical.column_id === pendingOperation.targetColumnId
+          && canonical.position === pendingOperation.targetPosition;
+        if (currentRequestVersion(requestId) !== operationVersionAtReceipt && !confirmsPendingMove) return;
+        if (confirmsPendingMove) {
+          pendingOperation.realtimeConfirmed = true;
+        }
+        advanceRequestVersion(requestId);
+        const type = eventType ?? (requestsRef.current.some((request) => request.id === requestId) ? "update" : "insert");
+        dispatch({ type, request: normalizeRequestCities(canonical, citiesByIdRef.current, profiles) });
+      } catch {
+        // A próxima alteração ou operação fará uma nova tentativa de reconciliação.
+      }
+    }
+
     const channel = supabase.channel("requests-board").on("postgres_changes", { event: "*", schema: "public", table: "requests" }, async (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => {
+      if (!mounted) return;
       const requestId = payload.eventType === "DELETE"
         ? (payload.old as { id: string }).id
         : (payload.new as { id: string }).id;
@@ -186,28 +222,11 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         dispatch({ type: "delete", id: requestId });
         return;
       }
-      if (tombstonesRef.current.has(requestId)) return;
-      const eventVersion = advanceRequestRealtimeVersion(requestId);
-      const operationVersionAtReceipt = currentRequestVersion(requestId);
-      try {
-        const canonical = await getRequest(requestId);
-        if (tombstonesRef.current.has(requestId) || !isCurrentRequestRealtimeVersion(requestId, eventVersion)) return;
-        const pendingOperation = pendingOperationsRef.current.get(requestId);
-        const confirmsPendingMove = pendingOperation?.kind === "move"
-          && canonical.column_id === pendingOperation.targetColumnId
-          && canonical.position === pendingOperation.targetPosition;
-        if (currentRequestVersion(requestId) !== operationVersionAtReceipt && !confirmsPendingMove) return;
-        if (confirmsPendingMove) {
-          pendingOperation.realtimeConfirmed = true;
-        }
-        advanceRequestVersion(requestId);
-        dispatch({ type: payload.eventType === "INSERT" ? "insert" : "update", request: enrichAssignee(canonical, profiles) });
-      } catch {
-        // A próxima alteração ou operação fará uma nova tentativa de reconciliação.
-      }
+      await reconcileRequest(requestId, payload.eventType === "INSERT" ? "insert" : "update");
     }).subscribe();
 
     const columnsChannel = supabase.channel("board-columns").on("postgres_changes", { event: "*", schema: "public", table: "board_columns" }, (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => {
+      if (!mounted) return;
       if (payload.eventType === "DELETE") {
         const columnId = (payload.old as { id: string }).id;
         advanceColumnVersion(columnId);
@@ -221,7 +240,41 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         dispatchColumns({ type: payload.eventType === "INSERT" ? "insert" : "update", column });
       }
     }).subscribe();
-    return () => { void supabase.removeChannel(channel); void supabase.removeChannel(columnsChannel); };
+
+    const citiesChannel = supabase.channel("cities-board").on("postgres_changes", { event: "*", schema: "public", table: "cities" }, (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => {
+      if (!mounted) return;
+      if (payload.eventType === "DELETE") {
+        const cityId = (payload.old as { id: string }).id;
+        citiesByIdRef.current.delete(cityId);
+        setCityState((current) => current.filter((city) => city.id !== cityId));
+        return;
+      }
+      const updatedCity = payload.new as unknown as City;
+      citiesByIdRef.current.set(updatedCity.id, updatedCity);
+      setCityState((current) => current.some((city) => city.id === updatedCity.id)
+        ? current.map((city) => city.id === updatedCity.id ? updatedCity : city)
+        : [...current, updatedCity]);
+      const relatedRequests = requestsRef.current.filter((request) => request.cities.some((city) => city.id === updatedCity.id));
+      for (const request of relatedRequests) {
+        dispatch({
+          type: "update",
+          request: { ...request, cities: request.cities.map((city) => city.id === updatedCity.id ? updatedCity : city) },
+        });
+      }
+    }).subscribe();
+
+    const requestCitiesChannel = supabase.channel("request-cities-board").on("postgres_changes", { event: "*", schema: "public", table: "request_cities" }, async (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => {
+      const requestId = (payload.new as { request_id?: string }).request_id ?? (payload.old as { request_id?: string }).request_id;
+      if (requestId) await reconcileRequest(requestId);
+    }).subscribe();
+
+    return () => {
+      mounted = false;
+      void supabase.removeChannel(channel);
+      void supabase.removeChannel(columnsChannel);
+      void supabase.removeChannel(citiesChannel);
+      void supabase.removeChannel(requestCitiesChannel);
+    };
   }, [advanceColumnVersion, advanceRequestRealtimeVersion, advanceRequestVersion, currentRequestVersion, dispatch, dispatchColumns, isCurrentRequestRealtimeVersion, profiles]);
 
   const filtered = useMemo(() => filterBoard(requests, selectedColumn, query, selectedTags), [query, requests, selectedColumn, selectedTags]);
@@ -239,7 +292,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         const updated = await updateRequest(selected.id, input);
         if (!isCurrentVersion(selected.id, version)) return;
         const latest = requestsRef.current.find((request) => request.id === selected.id) ?? selected;
-        dispatch({ type: "update", request: mergeCanonicalRequest(latest, updated, profiles) });
+        dispatch({ type: "update", request: mergeCanonicalRequest(latest, updated, citiesByIdRef.current, profiles) });
         setMessage("Solicitação atualizada.");
       } catch (error) {
         throw error;
@@ -248,7 +301,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
       const created = await createRequest(input, currentUserId, 1024);
       if (tombstonesRef.current.has(created.id)) return;
       const current = requestsRef.current.find((request) => request.id === created.id);
-      dispatch({ type: current ? "update" : "insert", request: enrichAssignee(current ?? created, profiles) });
+      dispatch({ type: current ? "update" : "insert", request: normalizeRequestCities(current ?? created, citiesByIdRef.current, profiles) });
       setMessage("Solicitação criada.");
     }
   }
@@ -285,7 +338,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         return "stale";
       }
       const latest = requestsRef.current.find((request) => request.id === requestId) ?? optimistic ?? previous;
-      dispatch({ type: "update", request: mergeCanonicalRequest(latest, canonical, profiles) });
+      dispatch({ type: "update", request: mergeCanonicalRequest(latest, canonical, citiesByIdRef.current, profiles) });
       setMessage("Solicitação movida.");
       return "success";
     } catch {
@@ -302,12 +355,12 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         const canonical = await getRequest(requestId);
         if (tombstonesRef.current.has(requestId) || !isCurrentVersion(requestId, version)) return "stale";
         const latest = requestsRef.current.find((request) => request.id === requestId) ?? optimistic ?? previous;
-        dispatch({ type: "update", request: mergeCanonicalRequest(latest, canonical, profiles) });
+        dispatch({ type: "update", request: mergeCanonicalRequest(latest, canonical, citiesByIdRef.current, profiles) });
         setMessage("A movimentação não foi confirmada; o quadro foi sincronizado com o servidor.");
         return "reloaded";
       } catch {
         if (tombstonesRef.current.has(requestId) || !isCurrentVersion(requestId, version)) return "stale";
-        dispatch({ type: "update", request: previous });
+        dispatch({ type: "update", request: normalizeRequestCities(previous, citiesByIdRef.current, profiles) });
         setMessage("Não foi possível mover a solicitação. O cartão voltou à posição anterior.");
         return "rollback";
       }
@@ -488,7 +541,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
         </header>
         <BoardNotice message={message} onClose={clearMessage} />
         <div className="panel mb-5 grid gap-3 p-3">
-          <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field" style={{ paddingLeft: "2.75rem" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, solicitante ou responsável" /></label>
+          <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field" style={{ paddingLeft: "2.75rem" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, cidade ou responsável" /></label>
           <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} selectedTags={selectedTags} onTagChange={setSelectedTags} />
         </div>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={({ active }) => setActiveDragId(String(active.id))} onDragCancel={() => setActiveDragId(null)} onDragEnd={handleMove} accessibility={accessibility}>
@@ -504,7 +557,7 @@ export function KanbanBoard({ initialRequests, initialColumns, profiles, current
           </DragOverlay>
         </DndContext>
       </div>
-      {selected !== undefined && <RequestDialog key={selected?.id ?? "new"} request={selected} profiles={profiles} columns={columns} canEdit={permissions.canEdit} canDelete={permissions.canDelete} canMove={permissions.canMove} onClose={() => setSelected(undefined)} onSave={save} onMoveToSystem={async (systemKey) => { if (selected) await moveToSystem(selected, systemKey); }} onDelete={selected ? async () => removeRequest(selected.id) : undefined} />}
+      {selected !== undefined && <RequestDialog key={selected?.id ?? "new"} request={selected} cities={cityState} profiles={profiles} columns={columns} canEdit={permissions.canEdit} canDelete={permissions.canDelete} canMove={permissions.canMove} onClose={() => setSelected(undefined)} onSave={save} onMoveToSystem={async (systemKey) => { if (selected) await moveToSystem(selected, systemKey); }} onDelete={selected ? async () => removeRequest(selected.id) : undefined} />}
     </main>
   );
 }

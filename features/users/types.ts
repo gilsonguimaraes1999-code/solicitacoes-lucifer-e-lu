@@ -6,6 +6,7 @@ export interface PermissionSet {
   can_move_requests: boolean;
   can_delete_requests: boolean;
   can_manage_columns: boolean;
+  can_manage_cities: boolean;
 }
 
 export interface AdminUser {

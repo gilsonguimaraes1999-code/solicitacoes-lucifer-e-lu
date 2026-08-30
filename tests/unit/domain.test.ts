@@ -16,13 +16,13 @@ describe("positionBetween", () => {
 
 describe("requestSchema", () => {
   it("aceita apenas links http ou https", () => {
-    const base = { title: "Solicitação", requesterName: "João", assignedTo: crypto.randomUUID(), tags: ["f1"] };
+    const base = { title: "Solicitação", cityIds: [crypto.randomUUID()], assignedTo: crypto.randomUUID(), tags: ["f1"] };
     expect(requestSchema.safeParse({ ...base, externalUrl: "javascript:alert(1)" }).success).toBe(false);
     expect(requestSchema.safeParse({ ...base, externalUrl: "https://example.com" }).success).toBe(true);
   });
 
   it("exige ao menos uma tag válida e não aceita repetições", () => {
-    const base = { title: "Solicitação", requesterName: "João", assignedTo: crypto.randomUUID() };
+    const base = { title: "Solicitação", cityIds: [crypto.randomUUID()], assignedTo: crypto.randomUUID() };
     expect(requestSchema.safeParse({ ...base, tags: [] }).success).toBe(false);
     expect(requestSchema.safeParse({ ...base, tags: ["f1", "growth"] }).success).toBe(true);
     expect(requestSchema.safeParse({ ...base, tags: ["f1", "f1"] }).success).toBe(false);
@@ -49,16 +49,17 @@ describe("effectivePermissions", () => {
 });
 
 describe("updateUserSchema", () => {
-  it("exige as cinco permissões booleanas", () => {
+  it("exige as seis permissões booleanas", () => {
     const permissions = {
       can_create_requests: true,
       can_edit_requests: true,
       can_move_requests: true,
       can_delete_requests: true,
       can_manage_columns: false,
+      can_manage_cities: false,
     };
 
     expect(updateUserSchema.safeParse({ action: "permissions", permissions }).success).toBe(true);
-    expect(updateUserSchema.safeParse({ action: "permissions", permissions: { ...permissions, can_manage_columns: undefined } }).success).toBe(false);
+    expect(updateUserSchema.safeParse({ action: "permissions", permissions: { ...permissions, can_manage_cities: undefined } }).success).toBe(false);
   });
 });

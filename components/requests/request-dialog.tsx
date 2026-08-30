@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { CityMultiSelect } from "@/components/cities/city-multi-select";
 import { ToastNotice } from "@/components/ui/site-toast";
 import { RequestTagIcons, RequestTagSelector } from "@/components/requests/request-tags";
 import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
+import type { City } from "@/features/cities/types";
 import type { RequestInput } from "@/features/requests/schemas";
 import type { Profile, RequestRecord } from "@/features/requests/types";
 
@@ -16,6 +18,7 @@ const systemActions: Array<{ key: SystemColumnKey; label: string }> = [
 
 interface RequestDialogProps {
   request: RequestRecord | null;
+  cities: City[];
   profiles: Profile[];
   columns: BoardColumn[];
   canEdit: boolean;
@@ -33,7 +36,7 @@ function requestFormValues(request: RequestRecord | null): RequestInput {
   return {
     title: request?.title ?? "",
     description: request?.description ?? "",
-    requesterName: request?.requester_name ?? "",
+    cityIds: request?.cities.map((city) => city.id) ?? [],
     assignedTo: request?.assigned_to ?? "",
     tags: request?.tags ?? [],
     externalUrl: request?.external_url ?? "",
@@ -57,20 +60,33 @@ function deletionErrorMessage(error: unknown) {
   return "Não foi possível excluir a solicitação. Tente novamente.";
 }
 
-export function RequestDialog({ request, profiles, columns, canEdit, canDelete, canMove, onClose, onSave, onMoveToSystem, onDelete }: RequestDialogProps) {
+export function RequestDialog({ request, cities, profiles, columns, canEdit, canDelete, canMove, onClose, onSave, onMoveToSystem, onDelete }: RequestDialogProps) {
   const [editing, setEditing] = useState(!request);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState("");
   const [formValues, setFormValues] = useState<RequestInput>(() => requestFormValues(request));
+  const [previousCities, setPreviousCities] = useState(cities);
   const dirtyFieldsRef = useRef(new Set<FormField>());
+
+  if (previousCities !== cities) {
+    setPreviousCities(cities);
+    if (!request) {
+      const inactiveIds = new Set(cities.filter((city) => !city.active).map((city) => city.id));
+      const activeCityIds = formValues.cityIds.filter((cityId) => !inactiveIds.has(cityId));
+      if (activeCityIds.length !== formValues.cityIds.length) {
+        setFormValues((current) => ({ ...current, cityIds: activeCityIds }));
+        setError("Uma cidade selecionada foi desativada. Revise a seleção.");
+      }
+    }
+  }
 
   useEffect(() => {
     const remoteValues = requestFormValues(request);
     setFormValues((current) => ({
       title: dirtyFieldsRef.current.has("title") ? current.title : remoteValues.title,
       description: dirtyFieldsRef.current.has("description") ? current.description : remoteValues.description,
-      requesterName: dirtyFieldsRef.current.has("requesterName") ? current.requesterName : remoteValues.requesterName,
+      cityIds: dirtyFieldsRef.current.has("cityIds") ? current.cityIds : remoteValues.cityIds,
       assignedTo: dirtyFieldsRef.current.has("assignedTo") ? current.assignedTo : remoteValues.assignedTo,
       tags: dirtyFieldsRef.current.has("tags") ? current.tags : remoteValues.tags,
       externalUrl: dirtyFieldsRef.current.has("externalUrl") ? current.externalUrl : remoteValues.externalUrl,
@@ -96,6 +112,10 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
       : `Entrará em: ${selectedDestination?.name ?? "Pendente"}`;
 
   async function submit() {
+    if (formValues.cityIds.length === 0) {
+      setError("Selecione pelo menos uma cidade.");
+      return;
+    }
     if (formValues.tags.length === 0) {
       setError("Selecione pelo menos uma tag.");
       return;
@@ -153,7 +173,11 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
           <div className="mt-5 grid gap-4 text-sm text-white/65">
             <div><b>Título</b><p>{request.title}</p></div>
             <div><b>Descrição</b><p className="whitespace-pre-wrap">{request.description || "Sem descrição"}</p></div>
-            <div><b>Solicitante</b><p>{request.requester_name}</p></div>
+            <div>
+              <b>{request.cities.length === 1 ? "Cidade" : "Cidades"}</b>
+              <p>{request.cities.map((city) => city.name).join(", ")}</p>
+              {request.cities.filter((city) => !city.active).map((city) => <span key={city.id} aria-label={`${city.name} Desativada`} className="status-badge mt-1 inline-flex">Desativada</span>)}
+            </div>
             <div><b>Responsável</b><p>{request.assignee?.full_name ?? "—"}</p></div>
             <div><b>Tags</b><RequestTagIcons tags={request.tags ?? []} /></div>
             {request.external_url && <a href={request.external_url} target="_blank" rel="noopener noreferrer" className="text-gold-soft">Abrir link externo</a>}
@@ -174,7 +198,10 @@ export function RequestDialog({ request, profiles, columns, canEdit, canDelete, 
           <form action={submit} className="mt-5 grid gap-4">
             <label className="label">Título<input className="field" name="title" value={formValues.title} onChange={(event) => updateField("title", event.target.value)} required minLength={2} maxLength={160} /></label>
             <label className="label">Descrição<textarea className="field min-h-28" name="description" value={formValues.description} onChange={(event) => updateField("description", event.target.value)} maxLength={5000} /></label>
-            <label className="label">Solicitante<input className="field" name="requesterName" value={formValues.requesterName} onChange={(event) => updateField("requesterName", event.target.value)} required /></label>
+            <div className="grid gap-2">
+              <span className="label">Cidade</span>
+              <CityMultiSelect cities={cities} value={formValues.cityIds} onChange={(cityIds) => updateField("cityIds", cityIds)} disabled={busy} />
+            </div>
             <label className="label">Responsável<select className="field" name="assignedTo" value={formValues.assignedTo} onChange={(event) => updateField("assignedTo", event.target.value)} required><option value="">Selecione</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name}</option>)}</select></label>
             <p className="-mt-2 text-sm text-white/45" aria-live="polite">{destinationMessage}</p>
             <RequestTagSelector value={formValues.tags} onChange={(tags) => updateField("tags", tags)} />
