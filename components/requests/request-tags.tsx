@@ -53,7 +53,7 @@ export function RequestTagSelector({ value, onChange }: { value: RequestTag[]; o
       {REQUEST_TAGS.map((tag) => {
         const selected = value.includes(tag);
         const color = selectorTagStyles[tag];
-        return <button key={tag} type="button" aria-label={`Tag ${REQUEST_TAG_LABELS[tag]}`} aria-pressed={selected} onClick={() => onChange(selected ? value.filter((item) => item !== tag) : [...value, tag])} className={`inline-flex h-7 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-xs font-semibold leading-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37]/45 [&_svg]:h-3.5 [&_svg]:w-3.5 ${selected ? color.selected : color.idle}`}>
+        return <button key={tag} type="button" aria-label={`Tag ${REQUEST_TAG_LABELS[tag]}`} aria-pressed={selected} style={{ fontSize: "0.75rem" }} onClick={() => onChange(selected ? value.filter((item) => item !== tag) : [...value, tag])} className={`inline-flex h-7 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-xs font-semibold leading-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37]/45 [&_svg]:h-3.5 [&_svg]:w-3.5 ${selected ? color.selected : color.idle}`}>
           <TagGlyph tag={tag} />{REQUEST_TAG_LABELS[tag]}
         </button>;
       })}
