@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ShieldCheck, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ToastNotice } from "@/components/ui/site-toast";
 import type { AdminUser, PermissionSet, UserEditorValue } from "@/features/users/types";
 
 const permissionLabels: [keyof PermissionSet, string, string][] = [
@@ -70,8 +71,9 @@ export function UserEditor({ user, onClose, onSave, onDelete }: { user: AdminUse
           {permissionLabels.map(([key, label, description]) => <label key={key} className="permission-option"><input type="checkbox" aria-label={label} checked={owner || permissions[key]} disabled={busy || owner} onChange={(event) => setPermissions((current) => ({ ...current, [key]: event.target.checked }))} /><span><strong>{label}</strong><small>{description}</small></span></label>)}
         </div>
       </section>
-      {error && <p role="alert" className="alert-error">{error}</p>}
+      {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
       <div className="flex flex-wrap items-center gap-2">{!owner && onDelete && <button type="button" className="button danger mr-auto inline-flex items-center gap-2" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 size={16} />Excluir conta</button>}<button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancelar</button><button type="submit" className="button" disabled={busy}>{busy ? "Salvando..." : "Salvar alterações"}</button></div>
     </form>
   </Modal>{confirmDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da conta" title="Excluir esta conta?" itemName={user.full_name} description={`${user.email} será removido permanentemente. As solicitações vinculadas serão transferidas para a conta owner e retornarão à lista Pendente.`} busy={deleting} onCancel={() => setConfirmDelete(false)} onConfirm={() => void removeAccount()} />}</>;
 }
+
