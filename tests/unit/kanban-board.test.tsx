@@ -98,6 +98,7 @@ describe("KanbanBoard", () => {
   it("mostra somente a coluna escolhida e restaura o quadro completo em Todos", () => {
     render(<KanbanBoard initialRequests={requests} initialColumns={columns} profiles={[]} currentUserId="owner" permissions={permissions} />);
 
+    expect(screen.getByPlaceholderText("Título, solicitante ou responsável")).toHaveStyle({ paddingLeft: "2.75rem" });
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Lucifer"]);
 
     fireEvent.click(screen.getByRole("button", { name: "Pendente (1)" }));
@@ -151,7 +152,7 @@ describe("KanbanBoard", () => {
     });
 
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Lucifer", "Bruno"]);
-    expect(screen.getByText("Não foi possível reordenar a lista. A ordem anterior foi restaurada.")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível reordenar a lista. A ordem anterior foi restaurada.");
   });
 
   it("preserva a ordem confirmada por Realtime quando a resposta da RPC de reordenação falha", async () => {

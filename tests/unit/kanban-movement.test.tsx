@@ -192,7 +192,7 @@ describe("KanbanBoard movement", () => {
     drag(sourceRequest.id, "column-completed");
 
     expect(mocks.moveRequest).toHaveBeenCalledOnce();
-    expect(screen.getByRole("status")).toHaveTextContent(/movimentação.*andamento/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/movimentação.*andamento/i);
 
     await act(async () => {
       firstMove.resolve({ ...sourceRequest, column_id: "column-pending", status: "pending", position: 1024 });
@@ -478,7 +478,7 @@ describe("KanbanBoard movement", () => {
 
     expect(mocks.moveRequest).not.toHaveBeenCalled();
     expect(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/exclusão.*andamento/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/exclusão.*andamento/i);
   });
 
   it("mostra falha de exclusão, libera a UI e aceita uma operação posterior", async () => {
@@ -603,6 +603,11 @@ describe("KanbanBoard save routing", () => {
     await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledWith({ title: "Nova demanda", description: "", requesterName: "Mariana", assignedTo: profiles[0].id, externalUrl: "" }, "owner", 1024));
     expect(boardRequests("Lucifer").getByRole("button", { name: "Nova demanda" })).toBeInTheDocument();
     expect(boardRequests("Lucifer").getByText("Lucifer", { selector: "span" })).toBeInTheDocument();
+    const notice = await screen.findByText("Solicitação criada.");
+    expect(notice.closest('[role="status"]')).toHaveClass("fixed", "bottom-6", "left-1/2");
+
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 3100)); });
+    expect(screen.queryByText("Solicitação criada.")).not.toBeInTheDocument();
   });
 
   it("confia no column_id retornado ao editar e recompõe a relação do novo responsável", async () => {

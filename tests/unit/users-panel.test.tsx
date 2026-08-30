@@ -1,7 +1,15 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UserEditor } from "@/components/users/user-editor";
+import { UsersPanel } from "@/components/users/users-panel";
 import { sortUsersByName } from "@/features/users/filter-users";
+
+vi.mock("@/lib/supabase/browser", () => ({
+  createBrowserClient: () => {
+    const channel = { on: vi.fn(() => channel), subscribe: vi.fn(() => channel) };
+    return { channel: vi.fn(() => channel), removeChannel: vi.fn() };
+  },
+}));
 
 const member = {
   id: "member-id",
@@ -20,6 +28,16 @@ const member = {
 };
 
 afterEach(() => cleanup());
+
+describe("UsersPanel", () => {
+  it("reserva espaço antes do texto para o ícone de pesquisa", () => {
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => undefined)));
+    render(<UsersPanel currentUserId="owner-id" />);
+
+    expect(screen.getByPlaceholderText("Pesquisar por nome ou e-mail")).toHaveStyle({ paddingLeft: "2.75rem" });
+    vi.unstubAllGlobals();
+  });
+});
 
 describe("UserEditor", () => {
   it("salva nome, aprovação e permissões editados no modal", async () => {
