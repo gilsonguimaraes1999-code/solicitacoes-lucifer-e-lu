@@ -98,7 +98,7 @@ export function CityMultiSelect({ cities, value, onChange, disabled = false }: C
         <div
           className="city-options-scroll absolute z-30 mt-2 max-h-[min(20rem,calc(100vh-10rem))] w-full overflow-y-auto rounded-xl border border-[#d4af37]/30 bg-[#0c0c0c] p-1.5 shadow-2xl shadow-black/70"
         >
-          <label className="sticky top-0 z-10 flex cursor-pointer items-center gap-3 rounded-lg border-b border-white/10 bg-[#0c0c0c] px-3 py-2.5 text-sm font-bold text-white shadow-[0_8px_14px_-13px_rgba(0,0,0,.9)]">
+          <label className="flex cursor-pointer items-center gap-3 rounded-lg border-b border-white/10 bg-[#0c0c0c] px-3 py-2.5 text-sm font-bold text-white">
             <input
               ref={selectAllRef}
               type="checkbox"
