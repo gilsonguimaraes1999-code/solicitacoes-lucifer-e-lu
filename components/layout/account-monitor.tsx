@@ -13,7 +13,7 @@ export function AccountMonitor({ userId }: { userId: string }) {
 
     const applyStatus = (status?: string) => {
       if (status === "approved") {
-        if (pathname !== "/dashboard") router.replace("/dashboard");
+        if (pathname === "/pending") router.replace("/dashboard");
       } else if (status && pathname !== "/pending") {
         router.replace("/pending");
       }
