@@ -1,5 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { AccountStatusSelect } from "@/components/users/account-status-select";
 import { UserEditor } from "@/components/users/user-editor";
 import { UsersPanel } from "@/components/users/users-panel";
 import { sortUsersByName } from "@/features/users/filter-users";
@@ -129,12 +133,21 @@ describe("UsersPanel", () => {
 });
 
 describe("UserEditor", () => {
-  it("salva nome, aprovação e permissões editados no modal", async () => {
+  it("abre o seletor de status com quatro opções e salva a aprovação editada", async () => {
+    const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<UserEditor user={member} onClose={vi.fn()} onSave={onSave} />);
 
     fireEvent.change(screen.getByLabelText("Nome completo"), { target: { value: "Lua Silva" } });
-    fireEvent.change(screen.getByLabelText("Status da conta"), { target: { value: "approved" } });
+    await user.click(screen.getByRole("button", { name: "Status da conta: Pendente" }));
+
+    expect(screen.getByRole("listbox", { name: "Status da conta disponível" })).toBeVisible();
+    expect(screen.getAllByRole("option")).toHaveLength(4);
+    expect(screen.getByRole("option", { name: "Pendente" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: "Aprovada" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.queryByText("Selecionar todas")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("option", { name: "Aprovada" }));
     fireEvent.click(screen.getByLabelText("Criar solicitações"));
     fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
 
@@ -143,6 +156,105 @@ describe("UserEditor", () => {
       approvalStatus: "approved",
       permissions: { ...member.permissions, can_create_requests: true },
     }));
+  });
+
+  it("fecha o seletor de status com Escape e clique externo, devolvendo foco ao trigger", async () => {
+    const user = userEvent.setup();
+    const onOutsideClick = vi.fn();
+    render(
+      <div>
+        <UserEditor user={member} onClose={vi.fn()} onSave={vi.fn()} />
+        <button type="button" onClick={onOutsideClick}>Fora</button>
+      </div>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Status da conta: Pendente" });
+    await user.click(trigger);
+    expect(screen.getByRole("listbox", { name: "Status da conta disponível" })).toBeVisible();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox", { name: "Status da conta disponível" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    expect(screen.getByRole("listbox", { name: "Status da conta disponível" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Fora" }));
+
+    expect(onOutsideClick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("listbox", { name: "Status da conta disponível" })).not.toBeInTheDocument();
+
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("fecha o seletor quando fica desabilitado e nao reabre sozinho ao habilitar de novo", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    function DisabledHarness() {
+      const [disabled, setDisabled] = useState(false);
+
+      return (
+        <div>
+          <AccountStatusSelect value="pending" onChange={onChange} disabled={disabled} />
+          <button type="button" onClick={() => setDisabled(true)}>Desabilitar</button>
+          <button type="button" onClick={() => setDisabled(false)}>Habilitar</button>
+        </div>
+      );
+    }
+
+    render(<DisabledHarness />);
+
+    const trigger = screen.getByRole("button", { name: "Status da conta: Pendente" });
+    await user.click(trigger);
+    expect(screen.getByRole("listbox", { name: "Status da conta disponível" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Desabilitar" }));
+    expect(screen.queryByRole("listbox", { name: "Status da conta disponível" })).not.toBeInTheDocument();
+    expect(trigger).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Habilitar" }));
+    expect(trigger).not.toBeDisabled();
+    expect(screen.queryByRole("listbox", { name: "Status da conta disponível" })).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    expect(screen.getByRole("listbox", { name: "Status da conta disponível" })).toBeVisible();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("nao reabre o listbox se disabled volta para false antes de timers pendentes", () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    const { rerender } = render(<AccountStatusSelect value="pending" onChange={onChange} disabled={false} />);
+
+    const trigger = screen.getByRole("button", { name: "Status da conta: Pendente" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("listbox", { name: "Status da conta disponível" })).toBeVisible();
+
+    rerender(<AccountStatusSelect value="pending" onChange={onChange} disabled />);
+    expect(screen.queryByRole("listbox", { name: "Status da conta disponível" })).not.toBeInTheDocument();
+
+    rerender(<AccountStatusSelect value="pending" onChange={onChange} disabled={false} />);
+    expect(screen.queryByRole("listbox", { name: "Status da conta disponível" })).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole("listbox", { name: "Status da conta disponível" })).toBeVisible();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("renderiza em SSR com snapshot inicial fechado e sem erro de hidratação", () => {
+    const onChange = vi.fn();
+
+    expect(() => renderToString(
+      <AccountStatusSelect value="pending" onChange={onChange} disabled={false} />,
+    )).not.toThrow();
+
+    const markup = renderToString(
+      <AccountStatusSelect value="pending" onChange={onChange} disabled={false} />,
+    );
+
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('role="listbox"');
   });
 
   it("expõe Gerenciar cidades e envia a permissão alterada", async () => {
@@ -161,7 +273,7 @@ describe("UserEditor", () => {
   it("mantém status e permissões nativas do owner protegidos", () => {
     render(<UserEditor user={{ ...member, id: "owner-id", role: "owner", approval_status: "approved" }} onClose={vi.fn()} onSave={vi.fn()} onDelete={vi.fn()} />);
 
-    expect(screen.getByLabelText("Status da conta")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Status da conta: Aprovada" })).toBeDisabled();
     expect(screen.getByLabelText("Criar solicitações")).toBeChecked();
     expect(screen.getByLabelText("Criar solicitações")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Excluir conta" })).not.toBeInTheDocument();
