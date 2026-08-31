@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type CollisionDetection, type DragEndEvent, type Modifier, type ScreenReaderInstructions } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Plus, Search } from "lucide-react";
@@ -61,6 +61,9 @@ const boardScreenReaderInstructions: ScreenReaderInstructions = {
 
 type DragItemType = "column" | "request";
 type ActiveDrag = { id: string; type: DragItemType };
+type BoardPan = { pointerId: number; startX: number; startScrollLeft: number };
+
+const boardPanBlockSelector = "[data-board-pan-block], article, button, a, input, select, textarea, [role='button'], [role='menu'], [role='dialog'], [contenteditable='true']";
 
 function dragItemType(data: Record<string, unknown> | undefined): DragItemType | undefined {
   return data?.type === "column" || data?.type === "request" ? data.type : undefined;
@@ -138,7 +141,10 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
   const [selectedColumn, setSelectedColumn] = useState("all");
   const [selectedTags, setSelectedTags] = useState<RequestTag[]>([]);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
+  const [isBoardPanning, setIsBoardPanning] = useState(false);
   const boundaryRef = useRef<HTMLDivElement | null>(null);
+  const boardViewportRef = useRef<HTMLDivElement | null>(null);
+  const boardPanRef = useRef<BoardPan | null>(null);
   const selectedColumnRef = useRef("all");
   const requestsRef = useRef(sortedInitialRequests);
   const columnsRef = useRef(sortedInitialColumns);
@@ -166,6 +172,61 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  useEffect(() => {
+    const viewport = boardViewportRef.current;
+    if (!viewport) return;
+
+    const resizeViewport = () => {
+      const top = Math.max(0, viewport.getBoundingClientRect().top);
+      const pageMain = viewport.closest("main");
+      const bottomPadding = pageMain ? Number.parseFloat(window.getComputedStyle(pageMain).paddingBottom) || 0 : 0;
+      viewport.style.height = `${Math.max(0, window.innerHeight - top - bottomPadding)}px`;
+    };
+
+    resizeViewport();
+    window.addEventListener("resize", resizeViewport);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resizeViewport);
+    if (boundaryRef.current) observer?.observe(boundaryRef.current);
+    return () => {
+      window.removeEventListener("resize", resizeViewport);
+      observer?.disconnect();
+    };
+  }, []);
+
+  function startBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || (event.pointerType && event.pointerType !== "mouse")) return;
+    const target = event.target;
+    if (target instanceof Element && target !== event.currentTarget && target.closest(boardPanBlockSelector)) return;
+
+    const viewport = event.currentTarget;
+    const scrollbarHeight = Math.max(0, viewport.offsetHeight - viewport.clientHeight);
+    const bounds = viewport.getBoundingClientRect();
+    if (scrollbarHeight > 0 && event.clientY >= bounds.bottom - scrollbarHeight) return;
+
+    boardPanRef.current = { pointerId: event.pointerId, startX: event.clientX, startScrollLeft: viewport.scrollLeft };
+    setIsBoardPanning(true);
+    viewport.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = boardPanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.currentTarget.scrollLeft = pan.startScrollLeft - (event.clientX - pan.startX);
+  }
+
+  function endBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = boardPanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    boardPanRef.current = null;
+    setIsBoardPanning(false);
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // A captura pode já ter sido liberada pelo navegador.
+    }
+  }
 
   const dispatch = useCallback((event: RequestsEvent) => {
     if ((event.type === "insert" || event.type === "update") && tombstonesRef.current.has(event.request.id)) return;
@@ -719,7 +780,19 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
           const type = dragItemType(active.data.current);
           setActiveDrag(type ? { id: String(active.id), type } : null);
           }} onDragCancel={() => setActiveDrag(null)} onDragEnd={handleDragEnd} accessibility={accessibility}>
-          <div className="kanban-grid kanban-board-scroll" role="region" aria-label="Quadro de listas" tabIndex={0}>
+          <div
+            ref={boardViewportRef}
+            className="kanban-grid kanban-board-scroll"
+            role="region"
+            aria-label="Quadro de listas"
+            tabIndex={0}
+            data-panning={isBoardPanning}
+            onPointerDown={startBoardPan}
+            onPointerMove={moveBoardPan}
+            onPointerUp={endBoardPan}
+            onPointerCancel={endBoardPan}
+            onLostPointerCapture={endBoardPan}
+          >
             <SortableContext items={visibleColumns.map((column) => column.id)} strategy={horizontalListSortingStrategy}>
               {visibleColumns.map((column) => {
                 const columnIndex = columns.findIndex((item) => item.id === column.id);
