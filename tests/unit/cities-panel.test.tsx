@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   renameCity: vi.fn(),
   deactivateCity: vi.fn(),
   reactivateCity: vi.fn(),
+  reorderCity: vi.fn(),
   listCities: vi.fn(),
   channel: vi.fn(),
   removeChannel: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("@/lib/supabase/browser", () => ({
 const activeCity: CityWithCount = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   name: "São Paulo",
+  position: 1024,
   active: true,
   created_by: null,
   created_at: "2026-08-30T00:00:00Z",
@@ -42,16 +44,22 @@ const inactiveCity: CityWithCount = {
   ...activeCity,
   id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   name: "Recife",
+  position: 2048,
   active: false,
   request_count: 1,
 };
 
-const curitiba = { ...activeCity, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", name: "Curitiba", request_count: 0 };
+const curitiba = { ...activeCity, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", name: "Curitiba", position: 3072, request_count: 0 };
+const salvador = { ...activeCity, id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "Salvador", position: 4096, request_count: 2 };
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => undefined;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
-  return { promise, resolve };
+  let reject: (reason?: unknown) => void = () => undefined;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -59,6 +67,7 @@ beforeEach(() => {
   mocks.renameCity.mockImplementation(async (id: string, name: string) => ({ ...activeCity, id, name }));
   mocks.deactivateCity.mockImplementation(async (id: string) => ({ ...activeCity, id, active: false }));
   mocks.reactivateCity.mockImplementation(async (id: string) => ({ ...inactiveCity, id, active: true }));
+  mocks.reorderCity.mockImplementation(async () => [activeCity, inactiveCity, curitiba]);
   mocks.listCities.mockReset();
   mocks.channel.mockReset();
   mocks.removeChannel.mockReset();
@@ -81,6 +90,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function cityNames() {
+  return screen.getAllByRole("heading", { level: 2 }).map((item) => item.textContent);
+}
+
 describe("CitiesPanel", () => {
   it("substitui eventos de cidade por UUID sem duplicar a linha", () => {
     render(<CitiesPanel initialCities={[activeCity, inactiveCity]} />);
@@ -100,7 +113,6 @@ describe("CitiesPanel", () => {
     render(<CitiesPanel initialCities={[activeCity, inactiveCity]} />);
     fireEvent.click(screen.getByRole("button", { name: "Ativas 1" }));
     fireEvent.change(screen.getByLabelText("Pesquisar cidades"), { target: { value: "são" } });
-    fireEvent.click(screen.getByRole("button", { name: "A–Z" }));
 
     await act(async () => {
       await mocks.requestCityChange({ eventType: "DELETE", old: { request_id: "request-1", city_id: activeCity.id }, new: {} });
@@ -110,7 +122,7 @@ describe("CitiesPanel", () => {
     expect(screen.getByText("4")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ativas 1" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Pesquisar cidades")).toHaveValue("são");
-    expect(screen.getByRole("button", { name: "Z–A" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "A–Z" })).not.toBeInTheDocument();
     expect(screen.queryByText(inactiveCity.name)).not.toBeInTheDocument();
   });
 
@@ -404,17 +416,639 @@ describe("CitiesPanel", () => {
     expect(screen.queryByText(inactiveCity.name)).not.toBeInTheDocument();
   });
 
-  it("exibe contagens e alterna a ordenação entre A–Z e Z–A", async () => {
-    const user = userEvent.setup();
-    render(<CitiesPanel initialCities={[activeCity, inactiveCity]} />);
+  it("exibe contagens na ordem persistida e remove o controle local de A–Z", () => {
+    render(<CitiesPanel initialCities={[inactiveCity, activeCity]} />);
 
     expect(screen.getByRole("button", { name: "Todas 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ativas 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Desativadas 1" })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 2 }).map((item) => item.textContent)).toEqual(["Recife", "São Paulo"]);
+    expect(cityNames()).toEqual(["São Paulo", "Recife"]);
+    expect(screen.queryByRole("button", { name: "A–Z" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Z–A" })).not.toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole("button", { name: "A–Z" }));
-    expect(screen.getAllByRole("heading", { level: 2 }).map((item) => item.textContent)).toEqual(["São Paulo", "Recife"]);
+  it("move a cidade do meio para cima com atualização otimista usando a ordem persistida completa", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    expect(cityNames()).toEqual([activeCity.name, recifeAtiva.name, curitiba.name]);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+
+    expect(mocks.reorderCity).toHaveBeenCalledWith(recifeAtiva.id, { beforeCityId: undefined, afterCityId: activeCity.id });
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, position: 1024 },
+        { ...activeCity, position: 2048 },
+        { ...curitiba, position: 3072 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+  });
+
+  it("desabilita os limites de mover para cima e para baixo", () => {
+    const recifeAtiva = { ...inactiveCity, active: true };
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    expect(screen.getByRole("button", { name: `Mover ${activeCity.name} para cima` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` })).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para baixo` })).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Mover ${curitiba.name} para baixo` })).toBeDisabled();
+  });
+
+  it("restaura o snapshot exato e mostra a mensagem de falha ao reordenar", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderFailure = deferred<CityWithCount>();
+    mocks.reorderCity.mockReturnValueOnce(reorderFailure.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+
+    await act(async () => {
+      reorderFailure.promise.catch(() => undefined);
+      reorderFailure.reject?.(new Error("offline"));
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível reordenar a cidade. Tente novamente.");
+    expect(cityNames()).toEqual([activeCity.name, recifeAtiva.name, curitiba.name]);
+  });
+
+  it("serializa reorders globalmente enquanto qualquer reorder está pendente", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const firstReorder = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(firstReorder.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, salvador.name]);
+
+    expect(screen.getByRole("button", { name: `Mover ${activeCity.name} para cima` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Mover ${curitiba.name} para cima` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Mover ${salvador.name} para cima` })).toBeDisabled();
+
+    const blockedMove = screen.getByRole("button", { name: `Mover ${curitiba.name} para cima` });
+    blockedMove.removeAttribute("disabled");
+    fireEvent.click(blockedMove);
+    expect(mocks.reorderCity).toHaveBeenCalledTimes(1);
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, salvador.name]);
+
+    await act(async () => {
+      firstReorder.promise.catch(() => undefined);
+      firstReorder.reject(new Error("offline"));
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível reordenar a cidade. Tente novamente.");
+    expect(cityNames()).toEqual([activeCity.name, recifeAtiva.name, curitiba.name, salvador.name]);
+  });
+
+  it("reordena visualmente quando o Realtime atualiza a posição", () => {
+    const recifeAtiva = { ...inactiveCity, active: true };
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, position: 512, updated_at: "2026-08-30T03:00:00Z" },
+    }));
+
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+  });
+
+  it("calcula vizinhos pelo conjunto persistido completo mesmo com filtro ativo", async () => {
+    const user = userEvent.setup();
+    render(<CitiesPanel initialCities={[curitiba, inactiveCity, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: "Ativas 2" }));
+    await user.click(screen.getByRole("button", { name: `Mover ${curitiba.name} para cima` }));
+
+    expect(mocks.reorderCity).toHaveBeenCalledWith(curitiba.id, { beforeCityId: activeCity.id, afterCityId: inactiveCity.id });
+  });
+
+  it("não deixa um UPDATE Realtime antigo sobrescrever uma reordenação local mais recente", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, position: 2048, updated_at: "2026-08-30T04:00:00Z" },
+    }));
+
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, position: 1024, updated_at: "2026-08-30T04:00:01Z" },
+        { ...activeCity, position: 2048 },
+        { ...curitiba, position: 3072 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+  });
+
+  it("reaplica evento remoto divergente mais novo se o reorder local falha", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, salvador.name]);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Remota", position: 5120, updated_at: "2026-08-30T06:00:00Z" },
+    }));
+
+    expect(cityNames()).toEqual(["Recife Remota", activeCity.name, curitiba.name, salvador.name]);
+
+    await act(async () => {
+      reorderResponse.promise.catch(() => undefined);
+      reorderResponse.reject(new Error("offline"));
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível reordenar a cidade. Tente novamente.");
+    expect(cityNames()).toEqual([activeCity.name, curitiba.name, salvador.name, "Recife Remota"]);
+  });
+
+  it("aplica as novas posições do catálogo canônico completo quando o reorder conclui", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, salvador.name]);
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, position: 1024, updated_at: "2026-08-30T06:10:00Z" },
+        { ...curitiba, position: 2048, updated_at: "2026-08-30T06:10:00Z" },
+        { ...activeCity, position: 3072, updated_at: "2026-08-30T06:10:00Z" },
+        { ...salvador, position: 4096, updated_at: "2026-08-30T06:10:00Z" },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual([recifeAtiva.name, curitiba.name, activeCity.name, salvador.name]);
+  });
+
+  it("preserva uma cidade B com update mais novo que a linha canônica atrasada", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: salvador,
+      new: { ...salvador, name: "Salvador Remota", active: false, updated_at: "2026-08-30T06:20:01Z" },
+    }));
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, position: 1024, updated_at: "2026-08-30T06:20:00Z" },
+        { ...activeCity, position: 2048, updated_at: "2026-08-30T06:20:00Z" },
+        { ...curitiba, position: 3072, updated_at: "2026-08-30T06:20:00Z" },
+        { ...salvador, name: "Salvador Antiga", active: true, position: 4096, updated_at: "2026-08-30T06:20:00Z" },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, "Salvador Remota"]);
+    expect(screen.getByRole("button", { name: "Reativar Salvador Remota" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desativar Salvador Antiga" })).not.toBeInTheDocument();
+  });
+
+  it("preserva cidade B com CRUD pendente contra o catálogo canônico do reorder", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    const renameResponse = deferred<CityWithCount>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    mocks.renameCity.mockReturnValueOnce(renameResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    await user.click(screen.getByRole("button", { name: `Renomear ${activeCity.name}` }));
+    await user.clear(screen.getByLabelText("Nome da cidade"));
+    await user.type(screen.getByLabelText("Nome da cidade"), "São Paulo Local");
+    await user.click(screen.getByRole("button", { name: "Salvar cidade" }));
+    await waitFor(() => expect(mocks.renameCity).toHaveBeenCalledWith(activeCity.id, "São Paulo Local"));
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, position: 1024, updated_at: "2026-08-30T06:30:00Z" },
+        { ...activeCity, name: "São Paulo Canônica", position: 2048, updated_at: "2026-08-30T06:31:00Z" },
+        { ...curitiba, position: 3072, updated_at: "2026-08-30T06:30:00Z" },
+        { ...salvador, position: 4096, updated_at: "2026-08-30T06:30:00Z" },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(screen.getByText(activeCity.name)).toBeInTheDocument();
+    expect(screen.queryByText("São Paulo Canônica")).not.toBeInTheDocument();
+    expect(cityNames().slice(0, 4)).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, salvador.name]);
+    expect(screen.getByRole("button", { name: `Renomear ${activeCity.name}` })).toBeDisabled();
+
+    await act(async () => {
+      renameResponse.resolve({ ...activeCity, name: "São Paulo Local", updated_at: "2026-08-30T06:32:00Z" });
+      await renameResponse.promise;
+    });
+
+    expect(screen.getByText("São Paulo Local")).toBeInTheDocument();
+  });
+
+  it("trata confirmação realtime da posição alvo como sucesso se a RPC falha", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderFailure = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderFailure.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Confirmada", position: 1024, updated_at: "2026-08-30T06:30:00Z" },
+    }));
+
+    await act(async () => {
+      reorderFailure.promise.catch(() => undefined);
+      reorderFailure.reject(new Error("offline"));
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(cityNames()).toEqual(["Recife Confirmada", activeCity.name, curitiba.name]);
+  });
+
+  it("não confirma a posição canônica com evento histórico coincidente e ainda faz rollback com toast na falha", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true, updated_at: "2026-08-30T06:30:00Z" };
+    const reorderFailure = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderFailure.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Coincidente Antiga", position: 1024, updated_at: "2026-08-30T06:29:59Z" },
+    }));
+
+    await act(async () => {
+      reorderFailure.promise.catch(() => undefined);
+      reorderFailure.reject(new Error("offline"));
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível reordenar a cidade. Tente novamente.");
+    expect(cityNames()).toEqual([activeCity.name, recifeAtiva.name, curitiba.name]);
+    expect(screen.queryByText("Recife Coincidente Antiga")).not.toBeInTheDocument();
+  });
+
+  it("preserva update remoto posterior sem toast quando a posição já foi confirmada e a RPC falha", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderFailure = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderFailure.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, salvador.name]);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Confirmada", position: 1024, updated_at: "2026-08-30T06:40:00Z" },
+    }));
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: { ...recifeAtiva, name: "Recife Confirmada", position: 1024, updated_at: "2026-08-30T06:40:00Z" },
+      new: { ...recifeAtiva, name: "Recife Remota Final", position: 5120, active: false, updated_at: "2026-08-30T06:40:01Z" },
+    }));
+
+    expect(cityNames()).toEqual(["Recife Remota Final", activeCity.name, curitiba.name, salvador.name]);
+
+    await act(async () => {
+      reorderFailure.promise.catch(() => undefined);
+      reorderFailure.reject(new Error("offline"));
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(cityNames()).toEqual([activeCity.name, curitiba.name, salvador.name, "Recife Remota Final"]);
+    expect(screen.getByRole("button", { name: "Reativar Recife Remota Final" })).toBeInTheDocument();
+  });
+
+  it("no sucesso com updated_at empatado a resposta RPC observada por último vence o remoto divergente", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Remota", position: 5120, updated_at: "2026-08-30T08:00:00Z" },
+    }));
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, name: "Recife RPC", position: 1024, updated_at: "2026-08-30T08:00:00Z" },
+        { ...activeCity, position: 2048 },
+        { ...curitiba, position: 3072 },
+        { ...salvador, position: 4096 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual(["Recife RPC", activeCity.name, curitiba.name, salvador.name]);
+  });
+
+  it("no sucesso com relógio remoto inválido a resposta RPC observada por último vence", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Sem Relogio", position: 5120, updated_at: "data-invalida" },
+    }));
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, name: "Recife RPC", position: 1024, updated_at: "2026-08-30T09:00:00Z" },
+        { ...activeCity, position: 2048 },
+        { ...curitiba, position: 3072 },
+        { ...salvador, position: 4096 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual(["Recife RPC", activeCity.name, curitiba.name, salvador.name]);
+  });
+
+  it("no sucesso preserva o remoto quando o timestamp demonstra que ele é mais novo", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Remota Nova", position: 5120, updated_at: "2026-08-30T10:00:01Z" },
+    }));
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, name: "Recife RPC Antiga", position: 1024, updated_at: "2026-08-30T10:00:00Z" },
+        { ...activeCity, position: 2048 },
+        { ...curitiba, position: 3072 },
+        { ...salvador, position: 4096 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual([activeCity.name, curitiba.name, salvador.name, "Recife Remota Nova"]);
+  });
+
+  it("não reaplica resposta RPC antiga após confirmação realtime seguida de update remoto mais novo", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name, salvador.name]);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: recifeAtiva,
+      new: { ...recifeAtiva, name: "Recife Confirmada", position: 1024, active: true, updated_at: "2026-08-30T11:00:00Z" },
+    }));
+    expect(cityNames()).toEqual(["Recife Confirmada", activeCity.name, curitiba.name, salvador.name]);
+
+    act(() => mocks.cityChange({
+      eventType: "UPDATE",
+      old: { ...recifeAtiva, name: "Recife Confirmada", position: 1024, active: true, updated_at: "2026-08-30T11:00:00Z" },
+      new: { ...recifeAtiva, name: "Recife Final Remota", position: 5120, active: false, updated_at: "2026-08-30T11:00:01Z" },
+    }));
+
+    expect(cityNames()).toEqual(["Recife Final Remota", activeCity.name, curitiba.name, salvador.name]);
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, name: "Recife RPC Antiga", position: 1024, active: true, updated_at: "2026-08-30T11:00:00Z" },
+        { ...activeCity, position: 2048 },
+        { ...curitiba, position: 3072 },
+        { ...salvador, position: 4096 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual([activeCity.name, curitiba.name, salvador.name, "Recife Final Remota"]);
+    expect(screen.getByRole("button", { name: "Reativar Recife Final Remota" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desativar Recife RPC Antiga" })).not.toBeInTheDocument();
+  });
+
+  it("não deixa refresh iniciado com reorder pendente sobrescrever a posição otimista", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true, request_count: 1 };
+    const reorderResponse = deferred<CityWithCount[]>();
+    const refreshResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    mocks.listCities.mockReturnValueOnce(refreshResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+
+    let refreshEvent = Promise.resolve();
+    act(() => {
+      refreshEvent = Promise.resolve(mocks.requestCityChange({ eventType: "UPDATE", old: { request_id: "request-1" }, new: { request_id: "request-1" } }));
+    });
+    await waitFor(() => expect(mocks.listCities).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      refreshResponse.resolve([
+        { ...activeCity, request_count: 3 },
+        { ...recifeAtiva, position: 2048, request_count: 9, updated_at: "2026-08-30T07:00:00Z" },
+        curitiba,
+      ]);
+      await refreshEvent;
+    });
+
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+    expect(screen.getByText("9")).toBeInTheDocument();
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, position: 1024, request_count: 9, updated_at: "2026-08-30T07:00:01Z" },
+        { ...activeCity, position: 2048, request_count: 3 },
+        { ...curitiba, position: 3072, request_count: 0 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(cityNames()).toEqual([recifeAtiva.name, activeCity.name, curitiba.name]);
+  });
+
+  it("desabilita renomear e desativar da mesma cidade enquanto o reorder está pendente e reabilita no sucesso", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const reorderResponse = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` }));
+
+    expect(screen.getByRole("button", { name: `Renomear ${recifeAtiva.name}` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Desativar ${recifeAtiva.name}` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Renomear ${activeCity.name}` })).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Desativar ${activeCity.name}` })).toBeEnabled();
+
+    await act(async () => {
+      reorderResponse.resolve([
+        { ...recifeAtiva, position: 1024, updated_at: "2026-08-30T12:00:00Z" },
+        { ...activeCity, position: 2048 },
+        { ...curitiba, position: 3072 },
+      ]);
+      await reorderResponse.promise;
+    });
+
+    expect(screen.getByRole("button", { name: `Renomear ${recifeAtiva.name}` })).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Desativar ${recifeAtiva.name}` })).toBeEnabled();
+  });
+
+  it("desabilita mover e ignora reorder da mesma cidade quando um CRUD já está pendente", async () => {
+    const user = userEvent.setup();
+    const recifeAtiva = { ...inactiveCity, active: true };
+    const deactivateResponse = deferred<CityWithCount>();
+    mocks.deactivateCity.mockReturnValueOnce(deactivateResponse.promise);
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity, salvador]} />);
+
+    await user.click(screen.getByRole("button", { name: `Desativar ${recifeAtiva.name}` }));
+    await user.click(screen.getByRole("button", { name: "Desativar cidade" }));
+    await waitFor(() => expect(mocks.deactivateCity).toHaveBeenCalledWith(recifeAtiva.id));
+
+    const moveUp = screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` });
+    const moveDown = screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para baixo` });
+    expect(moveUp).toBeDisabled();
+    expect(moveDown).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Mover ${activeCity.name} para baixo` })).toBeEnabled();
+
+    moveUp.removeAttribute("disabled");
+    fireEvent.click(moveUp);
+    expect(mocks.reorderCity).not.toHaveBeenCalled();
+    expect(cityNames().slice(0, 4)).toEqual([activeCity.name, recifeAtiva.name, curitiba.name, salvador.name]);
+
+    await act(async () => {
+      deactivateResponse.resolve({ ...recifeAtiva, active: false, updated_at: "2026-08-30T12:30:00Z" });
+      await deactivateResponse.promise;
+    });
+
+    expect(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` })).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para baixo` })).toBeEnabled();
+  });
+
+  it("mantém bloqueio de reorder por cidade com dois CRUDs concorrentes até cada settle", async () => {
+    const user = userEvent.setup();
+    const salvadorInativa = { ...salvador, active: false, updated_at: "2026-08-30T12:40:00Z" };
+    const reactivateRecife = deferred<CityWithCount>();
+    const reactivateSalvador = deferred<CityWithCount>();
+    mocks.reactivateCity.mockReturnValueOnce(reactivateRecife.promise).mockReturnValueOnce(reactivateSalvador.promise);
+    render(<CitiesPanel initialCities={[curitiba, inactiveCity, activeCity, salvadorInativa]} />);
+
+    await user.click(screen.getByRole("button", { name: `Reativar ${inactiveCity.name}` }));
+    await waitFor(() => expect(mocks.reactivateCity).toHaveBeenCalledWith(inactiveCity.id));
+    await user.click(screen.getByRole("button", { name: `Reativar ${salvadorInativa.name}` }));
+    await waitFor(() => expect(mocks.reactivateCity).toHaveBeenCalledWith(salvadorInativa.id));
+
+    const moveRecife = screen.getByRole("button", { name: `Mover ${inactiveCity.name} para cima` });
+    const moveSalvador = screen.getByRole("button", { name: `Mover ${salvadorInativa.name} para cima` });
+    expect(moveRecife).toBeDisabled();
+    expect(moveSalvador).toBeDisabled();
+
+    await user.click(moveRecife);
+    await user.click(moveSalvador);
+    expect(mocks.reorderCity).not.toHaveBeenCalled();
+
+    await act(async () => {
+      reactivateSalvador.resolve({ ...salvadorInativa, active: true, updated_at: "2026-08-30T12:40:01Z" });
+      await reactivateSalvador.promise;
+    });
+
+    expect(screen.getByRole("button", { name: `Mover ${inactiveCity.name} para cima` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Mover ${salvadorInativa.name} para cima` })).toBeEnabled();
+
+    await act(async () => {
+      reactivateRecife.resolve({ ...inactiveCity, active: true, updated_at: "2026-08-30T12:40:02Z" });
+      await reactivateRecife.promise;
+    });
+
+    expect(screen.getByRole("button", { name: `Mover ${inactiveCity.name} para cima` })).toBeEnabled();
+    expect(screen.getByRole("button", { name: `Mover ${salvadorInativa.name} para cima` })).toBeEnabled();
+  });
+
+  it("desabilita reativar da mesma cidade durante reorder pendente e ainda mostra rollback e toast na falha", async () => {
+    const user = userEvent.setup();
+    const reorderFailure = deferred<CityWithCount[]>();
+    mocks.reorderCity.mockReturnValueOnce(reorderFailure.promise);
+    render(<CitiesPanel initialCities={[curitiba, inactiveCity, activeCity]} />);
+
+    await user.click(screen.getByRole("button", { name: `Mover ${inactiveCity.name} para cima` }));
+    expect(cityNames()).toEqual([inactiveCity.name, activeCity.name, curitiba.name]);
+    expect(screen.getByRole("button", { name: `Reativar ${inactiveCity.name}` })).toBeDisabled();
+
+    await act(async () => {
+      reorderFailure.promise.catch(() => undefined);
+      reorderFailure.reject(new Error("offline"));
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível reordenar a cidade. Tente novamente.");
+    expect(cityNames()).toEqual([activeCity.name, inactiveCity.name, curitiba.name]);
+    expect(screen.getByRole("button", { name: `Reativar ${inactiveCity.name}` })).toBeEnabled();
   });
 
   it("mantém o diálogo aberto e mostra a validação junto ao campo quando o nome é inválido", async () => {
