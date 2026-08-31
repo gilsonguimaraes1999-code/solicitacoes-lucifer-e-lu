@@ -80,9 +80,7 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
           {eligibleProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name}</option>)}
         </select>
       </label>
-      <label className="label mt-3">Nome da lista
-        <input className="field" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} required minLength={2} maxLength={80} />
-      </label>
+      <p className="mt-3 text-sm text-white/45">O nome da lista acompanha o cadastro do responsável.</p>
     </>}
     {kind === "custom" && <label className="label mt-3">Nome da lista
       <input className="field" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} required minLength={2} maxLength={80} autoFocus />
