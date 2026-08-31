@@ -11,8 +11,8 @@ function isOccupiedColumnError(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "23503";
 }
 
-export function ColumnActions({ column, canManageColumns, canMoveLeft = false, canMoveRight = false, onRename, onReorder, onDelete }: { column: BoardColumn; canManageColumns: boolean; canMoveLeft?: boolean; canMoveRight?: boolean; onRename: (columnId: string, name: string) => Promise<void>; onReorder?: (columnId: string, direction: "left" | "right") => Promise<void>; onDelete: (columnId: string) => Promise<void> }) {
-  const [renaming, setRenaming] = useState(false);
+export function ColumnActions({ column, canManageColumns, canMoveLeft = false, canMoveRight = false, initialRenaming = false, onRename, onReorder, onDelete }: { column: BoardColumn; canManageColumns: boolean; canMoveLeft?: boolean; canMoveRight?: boolean; initialRenaming?: boolean; onRename: (columnId: string, name: string) => Promise<void>; onReorder?: (columnId: string, direction: "left" | "right") => Promise<void>; onDelete: (columnId: string) => Promise<void> }) {
+  const [renaming, setRenaming] = useState(initialRenaming);
   const [name, setName] = useState(column.name);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,7 +44,7 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
     };
   }, [menuOpen]);
 
-  if (!canManageColumns || column.kind !== "assignee") return null;
+  if (!canManageColumns || column.kind === "system") return null;
 
   async function rename(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,7 +101,7 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
       {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
       <div className="mt-3 flex justify-end gap-2"><button type="button" className="button secondary px-3 py-2 text-xs" disabled={busy} onClick={() => { setName(column.name); setError(""); setRenaming(false); }}>Cancelar</button><button type="submit" className="button px-3 py-2 text-xs" disabled={busy}>Salvar nome</button></div>
     </form> : null}
-    <button ref={triggerRef} type="button" className="icon-button" aria-label={`Abrir ações da lista ${column.name}`} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button>
+    <button ref={triggerRef} type="button" className="column-actions-trigger" aria-label={`Abrir ações da lista ${column.name}`} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button>
     {menuOpen && !renaming && <div className="absolute right-0 top-9 z-20 w-56 rounded-xl border border-white/10 bg-[#101010] p-1.5 shadow-2xl">
       {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
       {onReorder && <><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a esquerda`} disabled={busy || !canMoveLeft} onClick={() => void move("left")}><ChevronLeft size={16} />Mover para a esquerda</button><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a direita`} disabled={busy || !canMoveRight} onClick={() => void move("right")}><ChevronRight size={16} />Mover para a direita</button></>}
@@ -111,4 +111,3 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
     {confirmingDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da lista" title="Excluir lista?" itemName={column.name} description="A lista será removida permanentemente. Só é possível excluir listas que não possuem solicitações." busy={busy} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void remove()} />}
   </div>;
 }
-

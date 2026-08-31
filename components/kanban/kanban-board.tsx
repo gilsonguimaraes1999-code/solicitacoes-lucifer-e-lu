@@ -1,18 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type DragEndEvent, type ScreenReaderInstructions } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type CollisionDetection, type DragEndEvent, type ScreenReaderInstructions } from "@dnd-kit/core";
+import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Plus, Search } from "lucide-react";
 import { AddColumn } from "@/components/kanban/add-column";
 import { BoardNotice, type BoardMessage } from "@/components/kanban/board-notice";
 import { BoardFilters } from "@/components/kanban/board-filters";
+import { ColumnPreview } from "@/components/kanban/column-preview";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { RequestCardPreview } from "@/components/kanban/request-card";
 import { RequestDialog } from "@/components/requests/request-dialog";
-import { createBoardColumn, deleteBoardColumn, renameBoardColumn, reorderBoardColumn } from "@/features/columns/api";
+import { createBoardColumn, deleteBoardColumn, getBoardColumn, renameBoardColumn, reorderBoardColumn } from "@/features/columns/api";
 import { columnsReducer, type ColumnsEvent } from "@/features/columns/reducer";
-import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
+import type { BoardColumn, CreateColumnInput, SystemColumnKey } from "@/features/columns/types";
 import type { City } from "@/features/cities/types";
 import { createRequest, deleteRequest, getRequest, moveRequest, updateRequest } from "@/features/requests/api";
 import { filterBoard } from "@/features/requests/filter";
@@ -37,28 +38,61 @@ type PendingOperation =
   | { kind: "move"; token: symbol; targetColumnId: string; targetPosition: number; realtimeConfirmed: boolean }
   | { kind: "delete"; token: symbol };
 
-const boardScreenReaderInstructions: ScreenReaderInstructions = {
-  draggable: "Para mover um cartão, pressione a barra de espaço. Use as setas para escolher o destino, pressione a barra de espaço novamente para soltar ou Escape para cancelar.",
+type ColumnReorderIntent = {
+  token: symbol;
+  position: number;
+  version: number;
+  rpcStarted: boolean;
+  realtimeConfirmed: boolean;
+  resolve: () => void;
 };
 
-function boardItemName(id: string, requests: RequestRecord[], columns: BoardColumn[]) {
-  return requests.find((request) => request.id === id)?.title
-    ?? columns.find((column) => column.id === id)?.name
-    ?? id;
+type ColumnReorderQueue = {
+  active: ColumnReorderIntent;
+  queued?: ColumnReorderIntent;
+  latest: ColumnReorderIntent;
+  rollback: BoardColumn;
+};
+
+const boardScreenReaderInstructions: ScreenReaderInstructions = {
+  draggable: "Para mover uma coluna ou solicitação, pressione a barra de espaço. Use as setas para escolher o destino, pressione a barra de espaço novamente para soltar ou Escape para cancelar.",
+};
+
+type DragItemType = "column" | "request";
+type ActiveDrag = { id: string; type: DragItemType };
+
+function dragItemType(data: Record<string, unknown> | undefined): DragItemType | undefined {
+  return data?.type === "column" || data?.type === "request" ? data.type : undefined;
+}
+
+function boardItemName(type: DragItemType | undefined, id: string, requests: RequestRecord[], columns: BoardColumn[]) {
+  if (type === "request") return `solicitação ${requests.find((request) => request.id === id)?.title ?? id}`;
+  if (type === "column") return `coluna ${columns.find((column) => column.id === id)?.name ?? id}`;
+  return "item não identificado";
 }
 
 function boardAnnouncements(requests: RequestRecord[], columns: BoardColumn[]): Announcements {
   return {
-    onDragStart: ({ active }) => `Movimento iniciado para ${boardItemName(String(active.id), requests, columns)}.`,
+    onDragStart: ({ active }) => `Movimento iniciado para ${boardItemName(dragItemType(active.data.current), String(active.id), requests, columns)}.`,
     onDragOver: ({ active, over }) => over
-      ? `${boardItemName(String(active.id), requests, columns)} está sobre ${boardItemName(String(over.id), requests, columns)}.`
-      : `${boardItemName(String(active.id), requests, columns)} está fora de uma lista.`,
+      ? `${boardItemName(dragItemType(active.data.current), String(active.id), requests, columns)} está sobre ${boardItemName(dragItemType(over.data.current), String(over.id), requests, columns)}.`
+      : `${boardItemName(dragItemType(active.data.current), String(active.id), requests, columns)} está fora de uma lista.`,
     onDragEnd: ({ active, over }) => over
-      ? `${boardItemName(String(active.id), requests, columns)} foi movido para ${boardItemName(String(over.id), requests, columns)}.`
-      : `Movimento de ${boardItemName(String(active.id), requests, columns)} encerrado sem destino.`,
-    onDragCancel: ({ active }) => `Movimento de ${boardItemName(String(active.id), requests, columns)} cancelado.`,
+      ? `${boardItemName(dragItemType(active.data.current), String(active.id), requests, columns)} foi movido para ${boardItemName(dragItemType(over.data.current), String(over.id), requests, columns)}.`
+      : `Movimento de ${boardItemName(dragItemType(active.data.current), String(active.id), requests, columns)} encerrado sem destino.`,
+    onDragCancel: ({ active }) => `Movimento de ${boardItemName(dragItemType(active.data.current), String(active.id), requests, columns)} cancelado.`,
   };
 }
+
+const boardCollisionDetection: CollisionDetection = (args) => {
+  const activeType = dragItemType(args.active.data.current);
+  if (!activeType) return [];
+  const droppableContainers = args.droppableContainers.filter((container) => {
+    const targetType = dragItemType(container.data.current);
+    return activeType === "column" ? targetType === "column" : targetType === "column" || targetType === "request";
+  });
+  return closestCenter({ ...args, droppableContainers });
+};
 
 function enrichAssignee(request: RequestRecord, profiles: Profile[]): RequestRecord {
   const profile = profiles.find((item) => item.id === request.assigned_to);
@@ -80,6 +114,17 @@ function mergeCanonicalRequest(latest: RequestRecord, canonical: RequestRecord, 
   return normalizeRequestCities({ ...latest, ...canonical }, citiesById, profiles);
 }
 
+function isOlderColumnUpdate(incoming: BoardColumn, current: BoardColumn | undefined) {
+  if (!current) return false;
+  const incomingTimestamp = Date.parse(incoming.updated_at);
+  const currentTimestamp = Date.parse(current.updated_at);
+  return Number.isFinite(incomingTimestamp) && Number.isFinite(currentTimestamp) && incomingTimestamp < currentTimestamp;
+}
+
+function newestColumnUpdate(current: BoardColumn, incoming: BoardColumn) {
+  return isOlderColumnUpdate(incoming, current) ? current : incoming;
+}
+
 export function KanbanBoard({ initialRequests, initialColumns, cities, profiles, currentUserId, permissions }: KanbanBoardProps) {
   const sortedInitialRequests = useMemo(() => requestsReducer([], { type: "snapshot", requests: initialRequests }), [initialRequests]);
   const sortedInitialColumns = useMemo(() => columnsReducer([], { type: "snapshot", columns: initialColumns }), [initialColumns]);
@@ -91,13 +136,14 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
   const [query, setQuery] = useState("");
   const [selectedColumn, setSelectedColumn] = useState("all");
   const [selectedTags, setSelectedTags] = useState<RequestTag[]>([]);
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const selectedColumnRef = useRef("all");
   const requestsRef = useRef(sortedInitialRequests);
   const columnsRef = useRef(sortedInitialColumns);
   const requestVersionsRef = useRef(new Map<string, number>());
   const requestRealtimeVersionsRef = useRef(new Map<string, number>());
   const columnVersionsRef = useRef(new Map<string, number>());
+  const columnReorderQueuesRef = useRef(new Map<string, ColumnReorderQueue>());
   const pendingOperationsRef = useRef(new Map<string, PendingOperation>());
   const tombstonesRef = useRef(new Set<string>());
   const columnTombstonesRef = useRef(new Set<string>());
@@ -236,6 +282,16 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
       } else {
         const column = payload.new as unknown as BoardColumn;
         if (columnTombstonesRef.current.has(column.id)) return;
+        const currentColumn = columnsRef.current.find((current) => current.id === column.id);
+        if (isOlderColumnUpdate(column, currentColumn)) return;
+        const reorderQueue = columnReorderQueuesRef.current.get(column.id);
+        if (reorderQueue) {
+          const activeIntent = reorderQueue.active;
+          const confirmsActiveIntent = activeIntent.rpcStarted && column.position === activeIntent.position;
+          reorderQueue.rollback = newestColumnUpdate(reorderQueue.rollback, column);
+          if (confirmsActiveIntent) activeIntent.realtimeConfirmed = true;
+          if (!confirmsActiveIntent || reorderQueue.latest.token !== activeIntent.token) return;
+        }
         advanceColumnVersion(column.id);
         dispatchColumns({ type: payload.eventType === "INSERT" ? "insert" : "update", column });
       }
@@ -279,7 +335,8 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
 
   const filtered = useMemo(() => filterBoard(requests, selectedColumn, query, selectedTags), [query, requests, selectedColumn, selectedTags]);
   const visibleColumns = selectedColumn === "all" ? columns : columns.filter((column) => column.id === selectedColumn);
-  const activeDragRequest = activeDragId ? requests.find((request) => request.id === activeDragId) : undefined;
+  const activeDragRequest = activeDrag?.type === "request" ? requests.find((request) => request.id === activeDrag.id) : undefined;
+  const activeDragColumn = activeDrag?.type === "column" ? columns.find((column) => column.id === activeDrag.id) : undefined;
   const accessibility = useMemo(() => ({
     screenReaderInstructions: boardScreenReaderInstructions,
     announcements: boardAnnouncements(requests, columns),
@@ -408,8 +465,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
     if (outcome === "stale") throw new Error("A solicitação foi atualizada durante a movimentação. Confira o estado atual.");
   }
 
-  async function handleMove(event: DragEndEvent) {
-    setActiveDragId(null);
+  async function handleRequestDragEnd(event: DragEndEvent) {
     if (!permissions.canMove || !event.over) return;
 
     const currentRequests = requestsRef.current;
@@ -420,10 +476,14 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
     const previous = currentRequests.find((request) => request.id === requestId);
     if (!previous) return;
 
-    const overColumn = columns.find((column) => column.id === overId);
-    const overCard = currentRequests.find((request) => request.id === overId);
-    const targetColumnId = overColumn?.id ?? overCard?.column_id;
-    const targetColumn = columns.find((column) => column.id === targetColumnId);
+    const overType = dragItemType(event.over.data.current);
+    const overCard = overType === "request" ? currentRequests.find((request) => request.id === overId) : undefined;
+    const targetColumnId = overType === "column"
+      ? overId
+      : overType === "request" && typeof event.over.data.current?.columnId === "string"
+        ? event.over.data.current.columnId
+        : undefined;
+    const targetColumn = columnsRef.current.find((column) => column.id === targetColumnId);
     if (!targetColumnId || !targetColumn) return;
 
     const targetRequests = sortRequests(currentRequests.filter((request) => request.id !== requestId && request.column_id === targetColumnId));
@@ -457,9 +517,133 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
     await persistMovement(previous, targetColumnId, position, optimistic);
   }
 
-  async function addColumn(input: { name: string; assigneeId: string }) {
+  async function runColumnReorderQueue(columnId: string, queue: ColumnReorderQueue) {
+    while (true) {
+      const intent = queue.active;
+      intent.rpcStarted = true;
+      try {
+        const updated = await reorderBoardColumn(columnId, intent.position);
+        if (!columnTombstonesRef.current.has(columnId)) {
+          const responseIsOlder = isOlderColumnUpdate(updated, queue.rollback);
+          queue.rollback = newestColumnUpdate(queue.rollback, updated);
+          if (queue.latest.token !== intent.token) {
+            // A resposta atualiza apenas a base de rollback; a intenção enfileirada continua visível.
+          } else if (intent.realtimeConfirmed || !isCurrentColumnVersion(columnId, intent.version)) {
+            if (columnsRef.current.find((column) => column.id === columnId)?.position === intent.position) {
+              setMessage("Lista reordenada.");
+            }
+          } else if (!responseIsOlder) {
+            dispatchColumns({ type: "update", column: updated });
+            setMessage("Lista reordenada.");
+          }
+        }
+      } catch {
+        if (!columnTombstonesRef.current.has(columnId)) {
+          if (queue.latest.token !== intent.token) {
+            // Uma falha supersedida não pode restaurar a intenção anterior.
+          } else if (intent.realtimeConfirmed) {
+            setMessage("Lista reordenada.");
+          } else {
+            dispatchColumns({ type: "update", column: queue.rollback });
+            setMessage("Não foi possível reordenar a lista. A ordem anterior foi restaurada.");
+          }
+        }
+      } finally {
+        intent.resolve();
+      }
+
+      if (columnTombstonesRef.current.has(columnId)) {
+        queue.queued?.resolve();
+        if (columnReorderQueuesRef.current.get(columnId) === queue) columnReorderQueuesRef.current.delete(columnId);
+        return;
+      }
+      const next = queue.queued;
+      queue.queued = undefined;
+      if (next) {
+        queue.active = next;
+        continue;
+      }
+
+      try {
+        const canonical = await getBoardColumn(columnId);
+        if (canonical) queue.rollback = newestColumnUpdate(queue.rollback, canonical);
+      } catch {
+        // O evento Realtime ou a resposta RPC mais recente permanecem como fallback canônico.
+      }
+      if (columnTombstonesRef.current.has(columnId)) {
+        columnReorderQueuesRef.current.get(columnId)?.queued?.resolve();
+        if (columnReorderQueuesRef.current.get(columnId) === queue) columnReorderQueuesRef.current.delete(columnId);
+        return;
+      }
+      const queuedDuringReconciliation = columnReorderQueuesRef.current.get(columnId)?.queued;
+      queue.queued = undefined;
+      if (queuedDuringReconciliation) {
+        queue.active = queuedDuringReconciliation;
+        continue;
+      }
+      dispatchColumns({ type: "update", column: queue.rollback });
+      if (columnReorderQueuesRef.current.get(columnId) === queue) columnReorderQueuesRef.current.delete(columnId);
+      return;
+    }
+  }
+
+  function persistColumnReorder(previous: BoardColumn, position: number) {
+    const columnId = previous.id;
+    const version = advanceColumnVersion(columnId);
+    dispatchColumns({ type: "update", column: { ...previous, position } });
+    setMessage("");
+    let resolveIntent: () => void = () => undefined;
+    const completed = new Promise<void>((resolve) => { resolveIntent = resolve; });
+    const intent: ColumnReorderIntent = {
+      token: Symbol("reorder-column"),
+      position,
+      version,
+      rpcStarted: false,
+      realtimeConfirmed: false,
+      resolve: resolveIntent,
+    };
+    const queue = columnReorderQueuesRef.current.get(columnId);
+    if (queue) {
+      queue.queued?.resolve();
+      queue.queued = intent;
+      queue.latest = intent;
+      return completed;
+    }
+    const nextQueue: ColumnReorderQueue = { active: intent, latest: intent, rollback: previous };
+    columnReorderQueuesRef.current.set(columnId, nextQueue);
+    void runColumnReorderQueue(columnId, nextQueue);
+    return completed;
+  }
+
+  async function handleColumnDragEnd(event: DragEndEvent) {
+    if (!permissions.canManageColumns || !event.over || dragItemType(event.over.data.current) !== "column") return;
+
+    const currentColumns = columnsRef.current;
+    const columnId = String(event.active.id);
+    const overId = String(event.over.id);
+    if (columnId === overId) return;
+    const currentIndex = currentColumns.findIndex((column) => column.id === columnId);
+    const overIndex = currentColumns.findIndex((column) => column.id === overId);
+    if (currentIndex < 0 || overIndex < 0) return;
+
+    const previous = currentColumns[currentIndex];
+    const remainingColumns = currentColumns.filter((column) => column.id !== columnId);
+    const targetIndex = remainingColumns.findIndex((column) => column.id === overId);
+    const insertionIndex = currentIndex < overIndex ? targetIndex + 1 : targetIndex;
+    const position = positionBetween(remainingColumns[insertionIndex - 1]?.position, remainingColumns[insertionIndex]?.position);
+    await persistColumnReorder(previous, position);
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    setActiveDrag(null);
+    const activeType = dragItemType(event.active.data.current);
+    if (activeType === "request") return handleRequestDragEnd(event);
+    if (activeType === "column") return handleColumnDragEnd(event);
+  }
+
+  async function addColumn(input: CreateColumnInput) {
     const lastPosition = columnsRef.current.reduce((maximum, column) => Math.max(maximum, column.position), 0);
-    const created = await createBoardColumn(input.name, input.assigneeId, positionBetween(lastPosition));
+    const created = await createBoardColumn(input, positionBetween(lastPosition));
     if (columnTombstonesRef.current.has(created.id)) return;
     const current = columnsRef.current.find((column) => column.id === created.id);
     if (!current) {
@@ -485,7 +669,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
 
   async function reorderColumn(columnId: string, direction: "left" | "right") {
     const currentColumns = columnsRef.current;
-    const currentIndex = currentColumns.findIndex((column) => column.id === columnId && column.kind === "assignee");
+    const currentIndex = currentColumns.findIndex((column) => column.id === columnId && column.kind !== "system");
     const targetIndex = currentIndex + (direction === "left" ? -1 : 1);
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= currentColumns.length) return;
 
@@ -493,32 +677,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
     const position = direction === "left"
       ? positionBetween(currentColumns[targetIndex - 1]?.position, currentColumns[targetIndex].position)
       : positionBetween(currentColumns[targetIndex].position, currentColumns[targetIndex + 1]?.position);
-    const version = advanceColumnVersion(columnId);
-    dispatchColumns({ type: "update", column: { ...previous, position } });
-    setMessage("");
-
-    try {
-      const updated = await reorderBoardColumn(columnId, position);
-      if (columnTombstonesRef.current.has(columnId)) return;
-      if (!isCurrentColumnVersion(columnId, version)) {
-        if (columnsRef.current.find((column) => column.id === columnId)?.position === position) {
-          setMessage("Lista reordenada.");
-        }
-        return;
-      }
-      dispatchColumns({ type: "update", column: updated });
-      setMessage("Lista reordenada.");
-    } catch {
-      if (columnTombstonesRef.current.has(columnId)) return;
-      if (!isCurrentColumnVersion(columnId, version)) {
-        if (columnsRef.current.find((column) => column.id === columnId)?.position === position) {
-          setMessage("Lista reordenada.");
-        }
-        return;
-      }
-      dispatchColumns({ type: "update", column: previous });
-      setMessage("Não foi possível reordenar a lista. A ordem anterior foi restaurada.");
-    }
+    await persistColumnReorder(previous, position);
   }
 
   async function removeColumn(columnId: string) {
@@ -544,16 +703,21 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
           <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field" style={{ paddingLeft: "2.75rem" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, cidade ou responsável" /></label>
           <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} selectedTags={selectedTags} onTagChange={setSelectedTags} />
         </div>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={({ active }) => setActiveDragId(String(active.id))} onDragCancel={() => setActiveDragId(null)} onDragEnd={handleMove} accessibility={accessibility}>
+        <DndContext sensors={sensors} collisionDetection={boardCollisionDetection} onDragStart={({ active }) => {
+          const type = dragItemType(active.data.current);
+          setActiveDrag(type ? { id: String(active.id), type } : null);
+          }} onDragCancel={() => setActiveDrag(null)} onDragEnd={handleDragEnd} accessibility={accessibility}>
           <div className="kanban-grid" aria-label="Quadro de listas">
-            {visibleColumns.map((column) => {
-              const columnIndex = columns.findIndex((item) => item.id === column.id);
-              return <KanbanColumn key={column.id} column={column} requests={filtered.filter((request) => request.column_id === column.id)} canMove={permissions.canMove} canManageColumns={permissions.canManageColumns} canMoveColumnLeft={column.kind === "assignee" && columnIndex > 0} canMoveColumnRight={column.kind === "assignee" && columnIndex >= 0 && columnIndex < columns.length - 1} onOpen={setSelected} onRename={renameColumn} onReorder={reorderColumn} onDelete={removeColumn} />;
-            })}
+            <SortableContext items={visibleColumns.map((column) => column.id)} strategy={horizontalListSortingStrategy}>
+              {visibleColumns.map((column) => {
+                const columnIndex = columns.findIndex((item) => item.id === column.id);
+                return <KanbanColumn key={column.id} column={column} requests={filtered.filter((request) => request.column_id === column.id)} canMove={permissions.canMove} canManageColumns={permissions.canManageColumns} canReorderColumn={permissions.canManageColumns && selectedColumn === "all"} canMoveColumnLeft={column.kind !== "system" && columnIndex > 0} canMoveColumnRight={column.kind !== "system" && columnIndex >= 0 && columnIndex < columns.length - 1} onOpen={setSelected} onRename={renameColumn} onReorder={reorderColumn} onDelete={removeColumn} />;
+              })}
+            </SortableContext>
             <AddColumn columns={columns} profiles={profiles} canManageColumns={permissions.canManageColumns} onCreate={addColumn} />
           </div>
           <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
-            {activeDragRequest ? <RequestCardPreview request={activeDragRequest} /> : null}
+            {activeDragRequest ? <RequestCardPreview request={activeDragRequest} /> : activeDragColumn ? <ColumnPreview column={activeDragColumn} requestCount={requests.filter((request) => request.column_id === activeDragColumn.id).length} /> : null}
           </DragOverlay>
         </DndContext>
       </div>

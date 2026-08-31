@@ -7,13 +7,21 @@ import { ExternalLink } from "lucide-react";
 import { RequestTagIcons } from "@/components/requests/request-tags";
 import type { RequestRecord } from "@/features/requests/types";
 
+function citySummary(request: RequestRecord) {
+  if (request.cities.length === 0) return { label: "Cidade", names: "Não definida" };
+  return {
+    label: request.cities.length === 1 ? "Cidade" : "Cidades",
+    names: request.cities.map((city) => city.name).join(", "),
+  };
+}
+
 export function RequestCardPreview({ request }: { request: RequestRecord }) {
-  const cityLabel = request.cities.length === 1 ? "Cidade" : "Cidades";
+  const city = citySummary(request);
   return (
     <article className="w-[min(320px,calc(100vw-2rem))] rotate-[1deg] rounded-xl border border-[#d4af37]/45 bg-[#171717] p-3 shadow-[0_20px_55px_rgba(0,0,0,0.7)] ring-1 ring-[#d4af37]/20">
       <h3 className="font-semibold leading-snug text-white">{request.title}</h3>
       <RequestTagIcons tags={request.tags ?? []} />
-      <p className="mt-2 text-xs text-white/45">{cityLabel}: {request.cities.map((city) => city.name).join(", ")}</p>
+      <p className="mt-2 text-xs text-white/45">{city.label}: {city.names}</p>
       <p className="mt-1 text-xs text-white/45">Responsável: {request.assignee?.full_name ?? "—"}</p>
       {request.external_url && <span className="mt-3 inline-flex items-center gap-1 text-xs text-gold-soft"><ExternalLink size={13} />Abrir link</span>}
     </article>
@@ -21,9 +29,9 @@ export function RequestCardPreview({ request }: { request: RequestRecord }) {
 }
 
 export function RequestCard({ request, canMove, onOpen }: { request: RequestRecord; canMove: boolean; onOpen: () => void }) {
-  const sortable = useSortable({ id: request.id, data: { columnId: request.column_id }, disabled: !canMove });
+  const sortable = useSortable({ id: request.id, data: { type: "request", columnId: request.column_id }, disabled: !canMove });
   const dragProps = canMove ? { ...sortable.attributes, ...sortable.listeners } : {};
-  const cityLabel = request.cities.length === 1 ? "Cidade" : "Cidades";
+  const city = citySummary(request);
 
   return (
     <article
@@ -45,7 +53,7 @@ export function RequestCard({ request, canMove, onOpen }: { request: RequestReco
     >
       <h3 className="font-semibold leading-snug text-white">{request.title}</h3>
       <RequestTagIcons tags={request.tags ?? []} />
-      <p className="mt-2 text-xs text-white/45">{cityLabel}: {request.cities.map((city) => city.name).join(", ")}</p>
+      <p className="mt-2 text-xs text-white/45">{city.label}: {city.names}</p>
       <p className="mt-1 text-xs text-white/45">Responsável: {request.assignee?.full_name ?? "—"}</p>
       {request.external_url && (
         <a
