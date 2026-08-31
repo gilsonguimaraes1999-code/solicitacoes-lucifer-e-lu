@@ -1,5 +1,5 @@
 begin;
-select plan(122);
+select plan(146);
 
 select has_table('public', 'profiles', 'profiles existe');
 select has_table('public', 'user_permissions', 'user_permissions existe');
@@ -18,6 +18,8 @@ select has_function('public', 'reorder_board_column', array['uuid','numeric'], '
 select has_function('public', 'delete_board_column', array['uuid'], 'RPC de exclusão de coluna existe');
 select has_function('public', 'create_request', array['text','text','text','uuid','text','numeric'], 'RPC de criação de solicitação existe');
 select has_function('public', 'move_request', array['uuid','uuid','numeric'], 'RPC move por coluna existe');
+select has_function('public', 'reorder_city', array['uuid','uuid','uuid'], 'RPC de ordenação de cidade por vizinhos existe');
+select hasnt_function('public', 'reorder_city', array['uuid','numeric'], 'RPC legada de ordenação por posição foi removida');
 
 select function_privs_are('public', 'has_column_management_permission', array[]::text[], 'authenticated', array['EXECUTE'], 'autenticados consultam permissão de colunas');
 select function_privs_are('public', 'has_column_management_permission', array[]::text[], 'public', array[]::text[], 'público não consulta permissão de colunas');
@@ -35,6 +37,8 @@ select function_privs_are('public', 'create_request', array['text','text','text'
 select function_privs_are('public', 'create_request', array['text','text','text','uuid','text','numeric'], 'public', array[]::text[], 'público não executa criação de solicitação');
 select function_privs_are('public', 'move_request', array['uuid','uuid','numeric'], 'authenticated', array['EXECUTE'], 'autenticados executam movimento por coluna');
 select function_privs_are('public', 'move_request', array['uuid','uuid','numeric'], 'public', array[]::text[], 'público não executa movimento por coluna');
+select function_privs_are('public', 'reorder_city', array['uuid','uuid','uuid'], 'authenticated', array['EXECUTE'], 'autenticados executam ordenação de cidade');
+select function_privs_are('public', 'reorder_city', array['uuid','uuid','uuid'], 'public', array[]::text[], 'público não executa ordenação de cidade');
 select function_privs_are('public', 'update_request_content', array['uuid','text','text','text','uuid','text'], 'authenticated', array[]::text[], 'RPC legada de edição sem tags não fica executável');
 select function_privs_are('public', 'update_request_content', array['uuid','text','text','text','uuid','text'], 'public', array[]::text[], 'público não executa edição de solicitação');
 select function_privs_are(
@@ -80,6 +84,71 @@ select ok(has_table_privilege('authenticated', 'public.requests', 'delete'), 'us
 select has_table('public', 'board_columns', 'board_columns existe');
 select has_column('public', 'requests', 'column_id', 'requests possui column_id');
 select has_column('public', 'user_permissions', 'can_manage_columns', 'permissão de colunas existe');
+select has_column('public', 'cities', 'position', 'cities possui posição persistida');
+select results_eq(
+  $$
+    select data_type
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'cities'
+      and column_name = 'position'
+  $$,
+  $$ values ('numeric'::text) $$,
+  'cities.position usa tipo numeric'
+);
+select ok(
+  exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'cities'
+      and column_name = 'position'
+      and is_nullable = 'NO'
+  ),
+  'cities.position é obrigatória'
+);
+select ok(
+  exists (
+    select 1
+    from pg_attribute attribute
+    join pg_class class on class.oid = attribute.attrelid
+    join pg_namespace namespace on namespace.oid = class.relnamespace
+    join pg_attrdef attrdef on attrdef.adrelid = attribute.attrelid and attrdef.adnum = attribute.attnum
+    where namespace.nspname = 'public'
+      and class.relname = 'cities'
+      and attribute.attname = 'position'
+      and pg_get_expr(attrdef.adbin, attrdef.adrelid) like '1024%'
+  ),
+  'cities.position nasce com default 1024'
+);
+select ok(
+  exists (
+    select 1
+    from pg_constraint constraint_row
+    join pg_class class on class.oid = constraint_row.conrelid
+    join pg_namespace namespace on namespace.oid = class.relnamespace
+    where namespace.nspname = 'public'
+      and class.relname = 'cities'
+      and constraint_row.conname = 'cities_position_safe'
+      and pg_get_constraintdef(constraint_row.oid) like '%position%'
+      and pg_get_constraintdef(constraint_row.oid) like '%9007199254740991%'
+      and pg_get_constraintdef(constraint_row.oid) like '%NaN%'
+      and pg_get_constraintdef(constraint_row.oid) like '%Infinity%'
+      and pg_get_constraintdef(constraint_row.oid) like '%-Infinity%'
+  ),
+  'cities_position_safe protege o intervalo seguro'
+);
+select results_eq(
+  $$
+    select indexdef
+    from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'cities'
+      and indexname = 'cities_position_id_idx'
+  $$,
+  $$ values ('CREATE INDEX cities_position_id_idx ON public.cities USING btree (position, name, id)'::text) $$,
+  'cities_position_id_idx cobre position, name e id'
+);
 select ok(has_table_privilege('authenticated', 'public.board_columns', 'select'), 'autenticados leem colunas');
 select results_eq(
   $$ select count(*)::bigint from public.board_columns where kind = 'system' $$,
@@ -116,6 +185,33 @@ select results_eq(
       ('Santa'::text)
   $$,
   'migrations deixam exatamente as 14 cidades canônicas ativas'
+);
+
+select results_eq(
+  $$
+    select name, position
+    from public.cities
+    where active
+    order by position, name, id
+  $$,
+  $$
+    values
+      ('District99'::text, 1024::numeric),
+      ('Fronteira'::text, 2048::numeric),
+      ('Grande'::text, 3072::numeric),
+      ('KNG'::text, 4096::numeric),
+      ('Krown'::text, 5120::numeric),
+      ('Liberty99'::text, 6144::numeric),
+      ('Malta'::text, 7168::numeric),
+      ('Maresia'::text, 8192::numeric),
+      ('Nobre'::text, 9216::numeric),
+      ('Orizon'::text, 10240::numeric),
+      ('Prime'::text, 11264::numeric),
+      ('Real'::text, 12288::numeric),
+      ('Royal'::text, 13312::numeric),
+      ('Santa'::text, 14336::numeric)
+  $$,
+  'backfill de cidades segue a ordem determinística com passo 1024'
 );
 
 select is_empty(
@@ -819,9 +915,9 @@ end $$;
 select ok(public.has_city_management_permission(), 'membro aprovado com permissão gerencia cidades');
 
 select results_eq(
-  $$ select created.name, created.created_by from public.create_city('  Cidade autorizada  ') created $$,
-  $$ values ('Cidade autorizada'::text, '00000000-0000-0000-0000-000000000302'::uuid) $$,
-  'membro autorizado cria cidade normalizada'
+  $$ select created.name, created.position, created.created_by from public.create_city('  Cidade autorizada  ') created $$,
+  $$ values ('Cidade autorizada'::text, 15360::numeric, '00000000-0000-0000-0000-000000000302'::uuid) $$,
+  'membro autorizado cria cidade normalizada no fim da lista'
 );
 
 do $$ begin
@@ -834,11 +930,59 @@ do $$ begin
   perform public.create_city('Cidade Gama');
 end $$;
 
+select results_eq(
+  $$
+    select name, position
+    from public.cities
+    where name in ('Cidade Alfa', 'Cidade Beta', 'Cidade Gama')
+    order by name
+  $$,
+  $$
+    values
+      ('Cidade Alfa'::text, 16384::numeric),
+      ('Cidade Beta'::text, 17408::numeric),
+      ('Cidade Gama'::text, 18432::numeric)
+  $$,
+  'create_city sempre faz append com passo 1024'
+);
+
 select throws_ok(
   $$ select public.create_city('  cidade alfa  ') $$,
   '23505',
   null,
   'nomes de cidade não duplicam ignorando caixa e espaços'
+);
+
+select throws_ok(
+  $$
+    insert into public.cities(id, name, position, active, created_by)
+    values (
+      '00000000-0000-0000-0000-000000000401',
+      'Cidade Zero',
+      0,
+      true,
+      '00000000-0000-0000-0000-000000000301'
+    )
+  $$,
+  '23514',
+  null,
+  'constraint recusa posição zero'
+);
+
+select throws_ok(
+  $$
+    insert into public.cities(id, name, position, active, created_by)
+    values (
+      '00000000-0000-0000-0000-000000000402',
+      'Cidade Acima do Limite',
+      9007199254740992,
+      true,
+      '00000000-0000-0000-0000-000000000301'
+    )
+  $$,
+  '23514',
+  null,
+  'constraint recusa posição acima do limite seguro'
 );
 
 select throws_ok(
@@ -1079,6 +1223,20 @@ end $$;
 select ok(not public.has_city_management_permission(), 'membro aprovado sem permissão não gerencia cidades');
 
 select throws_ok(
+  $$
+    select *
+    from public.reorder_city(
+      (select id from public.cities where name = 'Cidade Alfa'),
+      null,
+      (select id from public.cities where name = 'Cidade autorizada')
+    )
+  $$,
+  '42501',
+  null,
+  'membro sem permissão não reordena cidade'
+);
+
+select throws_ok(
   $$ select public.create_city('Cidade bloqueada') $$,
   '42501',
   null,
@@ -1104,6 +1262,154 @@ select throws_ok(
   '42501',
   null,
   'membro sem permissão não reativa cidade'
+);
+
+do $$ begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000301', true);
+end $$;
+
+select throws_ok(
+  $$ select * from public.reorder_city((select id from public.cities where name = 'Cidade Alfa'), null, null) $$,
+  '23514',
+  null,
+  'reordenação exige ao menos um vizinho'
+);
+
+select throws_ok(
+  $$
+    select *
+    from public.reorder_city(
+      (select id from public.cities where name = 'Cidade Alfa'),
+      (select id from public.cities where name = 'Cidade Alfa'),
+      null
+    )
+  $$,
+  '23514',
+  null,
+  'reordenação recusa cidade como própria vizinha'
+);
+
+select throws_ok(
+  $$
+    select *
+    from public.reorder_city(
+      (select id from public.cities where name = 'Cidade Alfa'),
+      (select id from public.cities where name = 'Cidade autorizada'),
+      (select id from public.cities where name = 'Cidade autorizada')
+    )
+  $$,
+  '23514',
+  null,
+  'reordenação recusa vizinhos repetidos'
+);
+
+select throws_ok(
+  $$
+    select *
+    from public.reorder_city(
+      '00000000-0000-0000-0000-000000000499',
+      (select id from public.cities where name = 'Cidade autorizada'),
+      null
+    )
+  $$,
+  'P0002',
+  null,
+  'reordenação recusa cidade ausente'
+);
+
+select throws_ok(
+  $$
+    select *
+    from public.reorder_city(
+      (select id from public.cities where name = 'Cidade Alfa'),
+      '00000000-0000-0000-0000-000000000498',
+      null
+    )
+  $$,
+  'P0002',
+  null,
+  'reordenação recusa vizinha ausente'
+);
+
+select results_eq(
+  $$
+    with reordered as (
+      select *
+      from public.reorder_city(
+        (select id from public.cities where name = 'Cidade Gama'),
+        (select id from public.cities where name = 'Cidade autorizada'),
+        (select id from public.cities where name = 'Cidade Alfa')
+      )
+    )
+    select name, position
+    from reordered
+    where name in ('Cidade autorizada', 'Cidade Gama', 'Cidade Alfa', 'Cidade Beta')
+    order by position, name, id
+  $$,
+  $$
+    values
+      ('Cidade autorizada'::text, 15360::numeric),
+      ('Cidade Gama'::text, 16384::numeric),
+      ('Cidade Alfa'::text, 17408::numeric),
+      ('Cidade Beta'::text, 18432::numeric)
+  $$,
+  'owner reordena cidade por vizinhos e devolve ordem canônica renormalizada'
+);
+
+select throws_ok(
+  $$
+    select *
+    from public.reorder_city(
+      (select id from public.cities where name = 'Cidade Beta'),
+      (select id from public.cities where name = 'Cidade autorizada'),
+      (select id from public.cities where name = 'Cidade Alfa')
+    )
+  $$,
+  '23514',
+  null,
+  'reordenação recusa vizinhos não adjacentes na ordem atual'
+);
+
+do $$ begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000302', true);
+end $$;
+
+select results_eq(
+  $$
+    select name, position
+    from public.reorder_city(
+      (select id from public.cities where name = 'Cidade Beta'),
+      (select id from public.cities where name = 'Cidade autorizada'),
+      (select id from public.cities where name = 'Cidade Gama')
+    )
+    where name in ('Cidade autorizada', 'Cidade Beta', 'Cidade Gama', 'Cidade Alfa')
+    order by position, name, id
+  $$,
+  $$
+    values
+      ('Cidade autorizada'::text, 15360::numeric),
+      ('Cidade Beta'::text, 16384::numeric),
+      ('Cidade Gama'::text, 17408::numeric),
+      ('Cidade Alfa'::text, 18432::numeric)
+  $$,
+  'gestor de cidades reordena cidade pela RPC canônica'
+);
+
+select results_eq(
+  $$
+    select name, position
+    from public.cities
+    where name in ('Cidade autorizada', 'Cidade Beta', 'Cidade Gama', 'Cidade Alfa')
+    order by position, name, id
+  $$,
+  $$
+    values
+      ('Cidade autorizada'::text, 15360::numeric),
+      ('Cidade Beta'::text, 16384::numeric),
+      ('Cidade Gama'::text, 17408::numeric),
+      ('Cidade Alfa'::text, 18432::numeric)
+  $$,
+  'renormalização persiste a ordem canônica após o reorder'
 );
 
 set local role authenticated;
