@@ -28,7 +28,7 @@ export function KanbanColumn({ column, requests, canMove, canManageColumns, canR
     ? (event) => sortable.listeners?.onPointerDown?.(event)
     : undefined;
 
-  return <section ref={sortable.setNodeRef} data-board-pan-block style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? .32 : 1 }} className={`flex h-full min-h-0 min-w-0 flex-col cursor-default rounded-2xl border p-3 transition ${sortable.isOver ? "border-[#d4af37] bg-[#d4af37]/10" : "border-white/10 bg-black/45 backdrop-blur-md"}`}>
+  return <section ref={sortable.setNodeRef} data-board-pan-block style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? .32 : 1 }} className={`flex max-h-full min-h-0 min-w-0 flex-col cursor-default rounded-2xl border p-3 transition ${sortable.isOver ? "border-[#d4af37] bg-[#d4af37]/10" : "border-white/10 bg-black/45 backdrop-blur-md"}`}>
     <header onPointerDown={handleHeaderPointerDown} className={`mb-3 flex shrink-0 items-center justify-between gap-2 ${canReorderColumn ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}>
       <h2 className={`badge min-w-0 truncate ${color}`}>{canRenameFromTitle ? <button type="button" className="truncate bg-transparent text-inherit" aria-label={`Renomear lista ${column.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={() => setRenameRequest((current) => current + 1)}>{column.name}</button> : column.name}</h2>
       <div className="flex shrink-0 items-center gap-2" onPointerDown={(event) => event.stopPropagation()}>
