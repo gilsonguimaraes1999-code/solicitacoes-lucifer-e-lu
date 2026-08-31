@@ -88,9 +88,9 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
     {kind === "custom" && <label className="label mt-3">Nome da lista
       <input className="field" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} required minLength={2} maxLength={80} autoFocus />
     </label>}
-    <label className="label mt-3 flex items-center justify-between gap-3">Cor da lista
+    <div className="label mt-3 flex items-center justify-between gap-3"><span>Cor da lista</span>
       <input aria-label="Cor da lista" type="color" className="h-8 w-12 cursor-pointer rounded-md border border-white/15 bg-transparent p-0.5" value={color} onChange={(event) => setColor(event.target.value)} disabled={busy} />
-    </label>
+    </div>
     <div className="mt-3 flex gap-2">
       <button type="submit" className="button" disabled={busy}>{busy ? "Adicionando..." : "Adicionar lista"}</button>
       <button type="button" className="button secondary" disabled={busy} onClick={close}>Cancelar</button>
