@@ -113,6 +113,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -186,6 +188,79 @@ describe("KanbanBoard", () => {
     expect(scrollRegion.children).toHaveLength(7);
     expect(addList.parentElement).toBe(scrollRegion);
     expect(within(scrollRegion).getAllByRole("heading", { level: 2 })).toHaveLength(6);
+  });
+
+  it("recalcula a altura útil do quadro quando a viewport muda", async () => {
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={permissions} />);
+    const scrollRegion = screen.getByRole("region", { name: "Quadro de listas" });
+    vi.spyOn(scrollRegion, "getBoundingClientRect").mockReturnValue(rect({ top: 300, left: 0, right: 1200, bottom: 900, width: 1200, height: 600 }) as DOMRect);
+    const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudoElement) => {
+      const style = nativeGetComputedStyle(element, pseudoElement);
+      Object.defineProperty(style, "paddingBottom", { configurable: true, value: "32px" });
+      return style;
+    });
+    vi.stubGlobal("innerHeight", 900);
+
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(scrollRegion).toHaveStyle({ height: "568px" }));
+
+    vi.stubGlobal("innerHeight", 760);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(scrollRegion).toHaveStyle({ height: "428px" }));
+  });
+
+  it("arrasta o fundo vazio para navegar no mesmo scroll horizontal", () => {
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={permissions} />);
+    const scrollRegion = screen.getByRole("region", { name: "Quadro de listas" });
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    Object.assign(scrollRegion, { scrollLeft: 240, setPointerCapture, releasePointerCapture });
+    Object.defineProperties(scrollRegion, {
+      offsetHeight: { configurable: true, value: 500 },
+      clientHeight: { configurable: true, value: 490 },
+    });
+    vi.spyOn(scrollRegion, "getBoundingClientRect").mockReturnValue(rect({ top: 100, left: 100, right: 1100, bottom: 600, width: 1000, height: 500 }) as DOMRect);
+
+    fireEvent.pointerDown(scrollRegion, { button: 0, pointerId: 7, clientX: 500, clientY: 300 });
+    expect(scrollRegion).toHaveAttribute("data-panning", "true");
+    expect(setPointerCapture).toHaveBeenCalledWith(7);
+
+    fireEvent.pointerMove(scrollRegion, { pointerId: 7, clientX: 420, clientY: 300 });
+    expect(scrollRegion.scrollLeft).toBe(320);
+
+    fireEvent.pointerUp(scrollRegion, { pointerId: 7, clientX: 420, clientY: 300 });
+    expect(scrollRegion).toHaveAttribute("data-panning", "false");
+    expect(releasePointerCapture).toHaveBeenCalledWith(7);
+  });
+
+  it("não inicia o pan sobre cards, ações ou a scrollbar", () => {
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+    const scrollRegion = screen.getByRole("region", { name: "Quadro de listas" });
+    Object.assign(scrollRegion, { scrollLeft: 120, setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() });
+    Object.defineProperties(scrollRegion, {
+      offsetHeight: { configurable: true, value: 500 },
+      clientHeight: { configurable: true, value: 490 },
+    });
+    vi.spyOn(scrollRegion, "getBoundingClientRect").mockReturnValue(rect({ top: 100, left: 100, right: 1100, bottom: 600, width: 1000, height: 500 }) as DOMRect);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Abrir Pedido pendente" }), { button: 0, pointerId: 1, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(scrollRegion, { pointerId: 1, clientX: 200, clientY: 300 });
+    expect(scrollRegion.scrollLeft).toBe(120);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /adicionar outra lista/i }), { button: 0, pointerId: 2, clientX: 700, clientY: 300 });
+    fireEvent.pointerMove(scrollRegion, { pointerId: 2, clientX: 600, clientY: 300 });
+    expect(scrollRegion.scrollLeft).toBe(120);
+
+    fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
+    fireEvent.pointerDown(screen.getByRole("heading", { name: "Adicionar outra lista" }), { button: 0, pointerId: 4, clientX: 700, clientY: 300 });
+    fireEvent.pointerMove(scrollRegion, { pointerId: 4, clientX: 600, clientY: 300 });
+    expect(scrollRegion.scrollLeft).toBe(120);
+
+    fireEvent.pointerDown(scrollRegion, { button: 0, pointerId: 3, clientX: 500, clientY: 595 });
+    fireEvent.pointerMove(scrollRegion, { pointerId: 3, clientX: 400, clientY: 595 });
+    expect(scrollRegion.scrollLeft).toBe(120);
+    expect(scrollRegion).toHaveAttribute("data-panning", "false");
   });
 
   it("cria a lista após as colunas existentes quando há permissão", async () => {
