@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, MapPinned } from "lucide-react";
+import { sortCitiesByPosition } from "@/features/cities/ordering";
 import type { City } from "@/features/cities/types";
 
 interface CityMultiSelectProps {
@@ -13,9 +14,7 @@ interface CityMultiSelectProps {
 
 function orderedCities(cities: City[], selectedIds: string[]) {
   const selected = new Set(selectedIds);
-  return cities
-    .filter((city) => city.active || selected.has(city.id))
-    .sort((first, second) => first.name.localeCompare(second.name, "pt-BR") || first.id.localeCompare(second.id));
+  return sortCitiesByPosition(cities.filter((city) => city.active || selected.has(city.id)));
 }
 
 export function CityMultiSelect({ cities, value, onChange, disabled = false }: CityMultiSelectProps) {
@@ -23,7 +22,7 @@ export function CityMultiSelect({ cities, value, onChange, disabled = false }: C
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const activeIds = cities.filter((city) => city.active).map((city) => city.id);
+  const activeIds = sortCitiesByPosition(cities.filter((city) => city.active)).map((city) => city.id);
   const selectedActiveCount = activeIds.filter((id) => value.includes(id)).length;
   const allSelected = activeIds.length > 0 && selectedActiveCount === activeIds.length;
   const partiallySelected = selectedActiveCount > 0 && !allSelected;
