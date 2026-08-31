@@ -5,6 +5,7 @@ import { ShieldCheck, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ToastNotice } from "@/components/ui/site-toast";
+import { AccountStatusSelect } from "@/components/users/account-status-select";
 import type { AdminUser, PermissionSet, UserEditorValue } from "@/features/users/types";
 
 const permissionLabels: [keyof PermissionSet, string, string][] = [
@@ -61,9 +62,7 @@ export function UserEditor({ user, onClose, onSave, onDelete }: { user: AdminUse
     <form onSubmit={submit} className="grid gap-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="label">Nome completo<input className="field" value={fullName} onChange={(event) => setFullName(event.target.value)} required minLength={2} maxLength={120} disabled={busy} /></label>
-        <label className="label">Status da conta<select className="field" value={owner ? "approved" : approvalStatus} onChange={(event) => setApprovalStatus(event.target.value as AdminUser["approval_status"])} disabled={busy || owner}>
-          <option value="pending">Pendente</option><option value="approved">Aprovada</option><option value="rejected">Rejeitada</option><option value="suspended">Suspensa</option>
-        </select></label>
+        <div className="label"><span>Status da conta</span><AccountStatusSelect value={owner ? "approved" : approvalStatus} onChange={setApprovalStatus} disabled={busy || owner} /></div>
       </div>
       <section className="rounded-xl border border-white/10 bg-black/20 p-4">
         <div className="flex items-center gap-2"><ShieldCheck size={18} className="text-gold" /><h3 className="font-semibold text-white">Permissões individuais</h3></div>
