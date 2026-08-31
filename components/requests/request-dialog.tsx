@@ -10,6 +10,7 @@ import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
 import type { City } from "@/features/cities/types";
 import type { RequestInput } from "@/features/requests/schemas";
 import type { Profile, RequestRecord } from "@/features/requests/types";
+import { formatRequestCreatedAt } from "@/features/requests/date";
 
 const systemActions: Array<{ key: SystemColumnKey; label: string }> = [
   { key: "pending", label: "Pendente" },
@@ -203,6 +204,7 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
               {canEdit && <button type="button" className="button" onClick={() => setEditing(true)}>Editar</button>}
               {canDelete && onDelete && <button type="button" className="button danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>Excluir</button>}
             </div>
+            <p className="border-t border-white/8 pt-3 text-xs text-white/40">Criada em: {formatRequestCreatedAt(request.created_at)}</p>
           </div>
         ) : (
           <form action={submit} className="mt-5 grid gap-4">
