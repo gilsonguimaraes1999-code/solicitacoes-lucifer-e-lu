@@ -1,9 +1,10 @@
 begin;
-select plan(147);
+select plan(154);
 
 select has_table('public', 'profiles', 'profiles existe');
 select has_table('public', 'user_permissions', 'user_permissions existe');
 select has_table('public', 'requests', 'requests existe');
+select has_column('public', 'board_columns', 'color', 'colunas possuem cor persistida');
 select col_is_pk('public', 'profiles', 'id', 'profiles.id é chave primária');
 select col_is_pk('public', 'user_permissions', 'user_id', 'permissões têm uma linha por usuário');
 select has_function('public', 'is_approved', array['uuid'], 'função de aprovação existe');
@@ -14,6 +15,9 @@ select has_function('public', 'has_column_management_permission', array[]::text[
 select has_function('public', 'create_board_column', array['text','uuid','numeric'], 'RPC de criação de coluna existe');
 select has_function('public', 'create_custom_board_column', array['text','numeric'], 'RPC de criação de lista personalizada existe');
 select has_function('public', 'rename_board_column', array['uuid','text'], 'RPC de renomeação de coluna existe');
+select has_function('public', 'create_board_column', array['text','uuid','numeric','text'], 'RPC de criação colorida existe');
+select has_function('public', 'create_custom_board_column', array['text','numeric','text'], 'RPC de criação personalizada colorida existe');
+select has_function('public', 'rename_board_column', array['uuid','text','text'], 'RPC de edição de nome e cor existe');
 select has_function('public', 'reorder_board_column', array['uuid','numeric'], 'RPC de ordenação de coluna existe');
 select has_function('public', 'delete_board_column', array['uuid'], 'RPC de exclusão de coluna existe');
 select has_function('public', 'create_request', array['text','text','text','uuid','text','numeric'], 'RPC de criação de solicitação existe');
@@ -29,6 +33,9 @@ select function_privs_are('public', 'create_custom_board_column', array['text','
 select function_privs_are('public', 'create_custom_board_column', array['text','numeric'], 'public', array[]::text[], 'público não executa criação de lista personalizada');
 select function_privs_are('public', 'rename_board_column', array['uuid','text'], 'authenticated', array['EXECUTE'], 'autenticados executam renomeação de coluna');
 select function_privs_are('public', 'rename_board_column', array['uuid','text'], 'public', array[]::text[], 'público não executa renomeação de coluna');
+select function_privs_are('public', 'create_board_column', array['text','uuid','numeric','text'], 'authenticated', array['EXECUTE'], 'autenticados criam coluna colorida');
+select function_privs_are('public', 'create_custom_board_column', array['text','numeric','text'], 'authenticated', array['EXECUTE'], 'autenticados criam lista personalizada colorida');
+select function_privs_are('public', 'rename_board_column', array['uuid','text','text'], 'authenticated', array['EXECUTE'], 'autenticados editam nome e cor');
 select function_privs_are('public', 'reorder_board_column', array['uuid','numeric'], 'authenticated', array['EXECUTE'], 'autenticados executam ordenação de coluna');
 select function_privs_are('public', 'reorder_board_column', array['uuid','numeric'], 'public', array[]::text[], 'público não executa ordenação de coluna');
 select function_privs_are('public', 'delete_board_column', array['uuid'], 'authenticated', array['EXECUTE'], 'autenticados executam exclusão de coluna');
