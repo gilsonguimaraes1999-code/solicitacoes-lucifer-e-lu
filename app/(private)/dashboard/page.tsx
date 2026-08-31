@@ -11,7 +11,7 @@ export default async function DashboardPage() {
     supabase.from("requests").select(REQUEST_WITH_RELATIONS_SELECT).order("position").order("id"),
     supabase.from("profiles").select("*").eq("approval_status", "approved").order("full_name"),
     supabase.from("board_columns").select("*").order("position").order("id"),
-    supabase.from("cities").select("*").order("name"),
+    supabase.from("cities").select("*").order("position").order("name").order("id"),
   ]);
   if (requestsResult.error) throw requestsResult.error;
   if (profilesResult.error) throw profilesResult.error;
