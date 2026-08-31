@@ -58,10 +58,15 @@ describe("DashboardPage", () => {
       { table: "board_columns", column: "position" },
       { table: "board_columns", column: "id" },
     ]);
+    expect(mocks.orderCalls.filter(({ table }) => table === "cities")).toEqual([
+      { table: "cities", column: "position" },
+      { table: "cities", column: "name" },
+      { table: "cities", column: "id" },
+    ]);
   });
 
   it("carrega relações de cidades, normaliza solicitações e repassa todas as cidades ao quadro", async () => {
-    const city = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: false, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+    const city = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", position: 1024, active: false, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
     mocks.dataByTable = {
       requests: [{
         id: "request-1", title: "Pedido", description: null, requester_name: "Legado", assigned_to: "profile-1", external_url: null, tags: ["hub"], status: "pending", column_id: "column-pending", position: 512, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: null, request_cities: [{ city }],
