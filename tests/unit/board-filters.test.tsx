@@ -114,8 +114,8 @@ describe("KanbanColumn", () => {
     render(<KanbanColumn column={columns[3]} requests={columnRequests} canMove canManageColumns={false} onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
 
     const cardList = screen.getByLabelText("Solicitações em Lucifer");
-    expect(cardList).toHaveClass("overflow-y-auto", "overscroll-contain", "city-options-scroll");
-    expect(cardList).toHaveClass("max-h-[min(28rem,calc(100dvh-18rem))]");
+    expect(cardList).toHaveClass("min-h-0", "flex-1", "overflow-y-auto", "overscroll-contain", "city-options-scroll");
+    expect(cardList).not.toHaveClass("max-h-[min(28rem,calc(100dvh-18rem))]");
     for (const request of columnRequests) expect(screen.getByRole("button", { name: `Abrir ${request.title}` })).toBeInTheDocument();
   });
 });
