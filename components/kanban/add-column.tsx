@@ -59,7 +59,7 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
 
   if (!open) return <button type="button" className="add-list-tile" onClick={() => setOpen(true)}>+ Adicionar outra lista</button>;
 
-  if (!kind) return <div className="min-w-0 rounded-2xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-md">
+  if (!kind) return <div data-board-pan-block className="min-w-0 rounded-2xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-md">
     <h2 className="text-sm font-bold text-white">Adicionar outra lista</h2>
     <p className="mt-3 text-sm text-white/55">Escolha o tipo de lista que deseja adicionar.</p>
     <div className="mt-3 grid gap-2">
@@ -70,7 +70,7 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
     <button type="button" className="button secondary mt-3" onClick={close}>Cancelar</button>
   </div>;
 
-  return <form className="min-w-0 rounded-2xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-md" onSubmit={submit}>
+  return <form data-board-pan-block className="min-w-0 rounded-2xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-md" onSubmit={submit}>
     <h2 className="text-sm font-bold text-white">Adicionar outra lista</h2>
     {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
     {kind === "assignee" && <>
