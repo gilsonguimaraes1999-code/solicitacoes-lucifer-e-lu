@@ -1,4 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const guardMocks = vi.hoisted(() => ({
@@ -76,6 +78,21 @@ describe("autenticação", () => {
 });
 
 describe("AppHeader", () => {
+  it("remove o brilho dourado dos botões sem tocar nas sombras estruturais e de foco", () => {
+    const css = readFileSync(resolve(process.cwd(), "app/globals.css"), "utf8");
+
+    const buttonRule = css.match(/\.button\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(buttonRule).not.toContain("box-shadow");
+    expect(css).toContain(".button.secondary");
+    expect(css).toContain(".button.danger");
+    expect(css).toContain(".panel {");
+    expect(css).toContain("box-shadow: 0 20px 55px -18px rgba(0,0,0,.72), inset 0 1px rgba(255,255,255,.04);");
+    expect(css).toContain(".modal-card {");
+    expect(css).toContain("box-shadow: 0 34px 90px rgba(0,0,0,.8);");
+    expect(css).toContain(".field:focus {");
+    expect(css).toContain("box-shadow: 0 0 0 3px rgba(212,175,55,.1);");
+  });
+
   it("usa apenas a marca como acesso ao quadro", () => {
     render(<AppHeader profile={owner} permissions={{ ...memberPermissions, canManageCities: true }} />);
 
