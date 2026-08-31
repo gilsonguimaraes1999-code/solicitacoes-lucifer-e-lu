@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ExternalLink } from "lucide-react";
 import { RequestTagIcons } from "@/components/requests/request-tags";
 import type { RequestRecord } from "@/features/requests/types";
+import { formatRequestCreatedAt } from "@/features/requests/date";
 
 function citySummary(request: RequestRecord) {
   if (request.cities.length === 0) return { label: "Cidade", names: "Não definida" };
@@ -23,7 +24,7 @@ export function RequestCardPreview({ request }: { request: RequestRecord }) {
       <RequestTagIcons tags={request.tags ?? []} />
       <p className="mt-2 text-xs text-white/45">{city.label}: {city.names}</p>
       <p className="mt-1 text-xs text-white/45">Responsável: {request.assignee?.full_name ?? "—"}</p>
-      {request.external_url && <span className="mt-3 inline-flex items-center gap-1 text-xs text-gold-soft"><ExternalLink size={13} />Abrir link</span>}
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-2">{request.external_url && <span className="inline-flex items-center gap-1 text-xs text-gold-soft"><ExternalLink size={13} />Abrir link</span>}<span className="ml-auto text-[10px] text-white/35">Criada em: {formatRequestCreatedAt(request.created_at)}</span></div>
     </article>
   );
 }
@@ -55,19 +56,18 @@ export function RequestCard({ request, canMove, onOpen }: { request: RequestReco
       <RequestTagIcons tags={request.tags ?? []} />
       <p className="mt-2 text-xs text-white/45">{city.label}: {city.names}</p>
       <p className="mt-1 text-xs text-white/45">Responsável: {request.assignee?.full_name ?? "—"}</p>
-      {request.external_url && (
-        <a
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+        {request.external_url && <a
           href={request.external_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="relative z-10 mt-3 inline-flex items-center gap-1 text-xs text-gold-soft"
+          className="relative z-10 inline-flex items-center gap-1 text-xs text-gold-soft"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
-        >
-          <ExternalLink size={13} />Abrir link
-        </a>
-      )}
+        ><ExternalLink size={13} />Abrir link</a>}
+        <span className="ml-auto text-[10px] text-white/35">Criada em: {formatRequestCreatedAt(request.created_at)}</span>
+      </div>
     </article>
   );
 }

@@ -5,12 +5,14 @@ import { createColumnInputSchema } from "@/features/columns/schemas";
 import { ToastNotice } from "@/components/ui/site-toast";
 import type { BoardColumn, CreateColumnInput } from "@/features/columns/types";
 import type { Profile } from "@/features/requests/types";
+import { DEFAULT_COLUMN_COLORS } from "@/features/columns/colors";
 
 export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { columns: BoardColumn[]; profiles: Profile[]; canManageColumns: boolean; onCreate: (input: CreateColumnInput) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<CreateColumnInput["kind"] | null>(null);
   const [assigneeId, setAssigneeId] = useState("");
   const [name, setName] = useState("");
+  const [color, setColor] = useState<string>(DEFAULT_COLUMN_COLORS.custom);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const eligibleProfiles = useMemo(() => {
@@ -30,6 +32,7 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
     setKind(null);
     setAssigneeId("");
     setName("");
+    setColor(DEFAULT_COLUMN_COLORS.custom);
     setError("");
   }
 
@@ -37,8 +40,8 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
     event.preventDefault();
     if (!kind) return;
     const input: CreateColumnInput = kind === "custom"
-      ? { kind, name, assigneeId: null }
-      : { kind, name, assigneeId };
+      ? { kind, name, assigneeId: null, color }
+      : { kind, name, assigneeId, color };
     const parsed = createColumnInputSchema.safeParse(input);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Revise os dados da lista.");
@@ -63,8 +66,8 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
     <h2 className="text-sm font-bold text-white">Adicionar outra lista</h2>
     <p className="mt-3 text-sm text-white/55">Escolha o tipo de lista que deseja adicionar.</p>
     <div className="mt-3 grid gap-2">
-      <button type="button" className="button secondary justify-start" disabled={eligibleProfiles.length === 0} onClick={() => setKind("assignee")}>Lista de responsável</button>
-      <button type="button" className="button secondary justify-start" onClick={() => setKind("custom")}>Lista personalizada</button>
+      <button type="button" className="button secondary justify-start" disabled={eligibleProfiles.length === 0} onClick={() => { setKind("assignee"); setColor(DEFAULT_COLUMN_COLORS.assignee); }}>Lista de responsável</button>
+      <button type="button" className="button secondary justify-start" onClick={() => { setKind("custom"); setColor(DEFAULT_COLUMN_COLORS.custom); }}>Lista personalizada</button>
     </div>
     {eligibleProfiles.length === 0 && <p className="mt-3 text-sm text-white/45">Todos os responsáveis aprovados já possuem uma lista.</p>}
     <button type="button" className="button secondary mt-3" onClick={close}>Cancelar</button>
@@ -85,6 +88,9 @@ export function AddColumn({ columns, profiles, canManageColumns, onCreate }: { c
     {kind === "custom" && <label className="label mt-3">Nome da lista
       <input className="field" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} required minLength={2} maxLength={80} autoFocus />
     </label>}
+    <label className="label mt-3 flex items-center justify-between gap-3">Cor da lista
+      <input aria-label="Cor da lista" type="color" className="h-8 w-12 cursor-pointer rounded-md border border-white/15 bg-transparent p-0.5" value={color} onChange={(event) => setColor(event.target.value)} disabled={busy} />
+    </label>
     <div className="mt-3 flex gap-2">
       <button type="submit" className="button" disabled={busy}>{busy ? "Adicionando..." : "Adicionar lista"}</button>
       <button type="button" className="button secondary" disabled={busy} onClick={close}>Cancelar</button>

@@ -726,9 +726,9 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
     setMessage("Lista adicionada.");
   }
 
-  async function renameColumn(columnId: string, name: string) {
+  async function renameColumn(columnId: string, name: string, color: string) {
     const version = advanceColumnVersion(columnId);
-    const updated = await renameBoardColumn(columnId, name);
+    const updated = await renameBoardColumn(columnId, name, color);
     if (columnTombstonesRef.current.has(columnId)) return;
     if (!isCurrentColumnVersion(columnId, version)) {
       if (columnsRef.current.find((column) => column.id === columnId)?.name === updated.name) {
