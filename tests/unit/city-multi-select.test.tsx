@@ -171,7 +171,7 @@ describe("CityMultiSelect", () => {
     expect(within(listbox).queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("expõe ARIA, linha fixa e rolagem temática e não abre quando desabilitado", async () => {
+  it("expõe ARIA e não abre quando desabilitado", async () => {
     const user = userEvent.setup();
     render(<CityMultiSelect cities={cities} value={[]} onChange={vi.fn()} disabled />);
     const trigger = screen.getByRole("button", { name: "Selecionar cidades" });
@@ -183,14 +183,14 @@ describe("CityMultiSelect", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
-  it("mantém selecionar-todas fora da lista e usa opções sem controles aninhados", async () => {
+  it("rola selecionar-todas junto com as cidades e usa opções sem controles aninhados", async () => {
     const user = userEvent.setup();
     render(<CityMultiSelect cities={cities} value={[]} onChange={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Selecionar cidades" }));
     const listbox = screen.getByRole("listbox", { name: "Cidades disponíveis" });
     const selectAll = screen.getByRole("checkbox", { name: "Selecionar todas" });
-    expect(selectAll.closest("label")).toHaveClass("sticky", "top-0");
+    expect(selectAll.closest("label")).not.toHaveClass("sticky", "top-0");
     expect(selectAll.closest(".city-options-scroll")).toContainElement(listbox);
     expect(listbox).not.toContainElement(selectAll);
     expect(within(listbox).getAllByRole("option")).toHaveLength(2);
