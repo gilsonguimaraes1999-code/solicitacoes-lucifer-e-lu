@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { TriangleAlert } from "lucide-react";
 
 interface ConfirmDialogProps {
@@ -16,25 +17,70 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
 }
 
+function subscribeToPortalRoot() {
+  return () => undefined;
+}
+
+function getPortalRoot(): HTMLElement | null {
+  return document.body;
+}
+
+function getServerPortalRoot(): HTMLElement | null {
+  return null;
+}
+
 export function ConfirmDialog({ ariaLabel, title, itemName, description, busy = false, actionLabel = "Excluir definitivamente", busyActionLabel = "Excluindo...", eyebrow = "Ação permanente", onCancel, onConfirm }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const portalRoot = useSyncExternalStore(subscribeToPortalRoot, getPortalRoot, getServerPortalRoot);
 
   useEffect(() => {
-    cancelRef.current?.focus();
+    if (!portalRoot) return;
 
-    function closeOnEscape(event: KeyboardEvent) {
+    const previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    (cancelRef.current ?? dialogRef.current)?.focus();
+
+    return () => {
+      if (previouslyFocusedElement?.isConnected) previouslyFocusedElement.focus();
+    };
+  }, [portalRoot]);
+
+  useEffect(() => {
+    if (!portalRoot) return;
+
+    function handleDialogKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !busy) onCancel();
+      if (event.key !== "Tab") return;
+
+      const focusableElements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])") ?? []);
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements.at(-1);
+
+      if (!firstElement || !lastElement) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+      } else if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
     }
 
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [busy, onCancel]);
+    document.addEventListener("keydown", handleDialogKeyDown);
+    return () => document.removeEventListener("keydown", handleDialogKeyDown);
+  }, [busy, onCancel, portalRoot]);
 
-  return (
+  if (!portalRoot) return null;
+
+  return createPortal(
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
+      tabIndex={-1}
       className="fixed inset-0 z-[90] grid place-items-center bg-black/80 p-4 backdrop-blur-md"
     >
       <section className="w-full max-w-md overflow-hidden rounded-3xl border border-[#d4af37]/30 bg-[#0b0b0b] shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
@@ -63,6 +109,7 @@ export function ConfirmDialog({ ariaLabel, title, itemName, description, busy = 
           </div>
         </div>
       </section>
-    </div>
+    </div>,
+    portalRoot,
   );
 }
