@@ -37,6 +37,10 @@
   ],
   "exclude": [
     "node_modules",
+    "node_modules.backup-*",
+    ".pnpm-store",
+    ".superpowers",
+    ".upload-staging-*",
     "work"
   ]
 }
