@@ -154,6 +154,17 @@ describe("ColumnActions", () => {
     expect(screen.queryByRole("button", { name: "Renomear lista" })).not.toBeInTheDocument();
   });
 
+  it("fecha o editor de nome quando o usuário clica fora dele", () => {
+    const systemColumn: BoardColumn = { ...columns[0], name: "Pendente", kind: "system", assignee_id: null, system_key: "pending" };
+    render(<ColumnActions column={systemColumn} canManageColumns initialRenaming onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.getByLabelText("Novo nome da lista")).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByLabelText("Novo nome da lista")).not.toBeInTheDocument();
+  });
+
   it("inicia a edição com o nome remoto mais recente", () => {
     const customColumn: BoardColumn = { ...columns[0], name: "Prioridades", kind: "custom", system_key: null, assignee_id: null };
     const { rerender } = render(<ColumnActions column={customColumn} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
