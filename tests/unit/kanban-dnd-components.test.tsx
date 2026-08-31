@@ -65,20 +65,14 @@ describe("Kanban DnD components", () => {
 
     expect(mocks.sortableArguments[0]).toEqual(expect.objectContaining({ id: customColumn.id, data: { type: "column" }, disabled: { draggable: false, droppable: false } }));
     const header = container.querySelector("header");
-    const keyboardHandle = screen.getByRole("button", { name: `Arrastar lista ${customColumn.name}` });
     expect(header).not.toHaveAttribute("role");
     expect(header).not.toHaveAttribute("tabindex");
     expect(header).not.toHaveAttribute("data-drag-attribute");
-    expect(keyboardHandle).toHaveAttribute("data-drag-attribute", "true");
+    expect(screen.queryByRole("button", { name: `Arrastar lista ${customColumn.name}` })).not.toBeInTheDocument();
     expect(header?.querySelector("button button")).toBeNull();
 
     fireEvent.pointerDown(header!);
     expect(mocks.dragPointerDown).toHaveBeenCalledOnce();
-
-    fireEvent.keyDown(keyboardHandle, { key: " " });
-    fireEvent.keyDown(keyboardHandle, { key: "Enter" });
-    fireEvent.keyDown(keyboardHandle, { key: "Escape" });
-    expect(mocks.dragKeyDown.mock.calls.map(([event]) => event.key)).toEqual([" ", "Enter", "Escape"]);
   });
 
   it("edita pelo nome custom e abre o menu sem iniciar o arraste da coluna", () => {
