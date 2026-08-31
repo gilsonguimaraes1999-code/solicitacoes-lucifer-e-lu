@@ -44,7 +44,8 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
     };
   }, [menuOpen]);
 
-  const canRenameOrDelete = column.kind !== "system";
+  const canRename = column.kind !== "assignee";
+  const canDelete = column.kind === "custom";
 
   if (!canManageColumns) return null;
 
@@ -97,7 +98,7 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
   }
 
   return <div ref={actionsRef} className="relative" aria-label={`Ações da lista ${column.name}`}>
-    {canRenameOrDelete && renaming ? <form className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-white/10 bg-[#101010] p-3 shadow-2xl" onSubmit={rename}>
+    {canRename && renaming ? <form className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-white/10 bg-[#101010] p-3 shadow-2xl" onSubmit={rename}>
       <label className="sr-only" htmlFor={`column-name-${column.id}`}>Novo nome da lista</label>
       <input id={`column-name-${column.id}`} className="field" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} minLength={2} maxLength={80} required />
       {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
@@ -107,9 +108,9 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
     {menuOpen && !renaming && <div className="absolute right-0 top-9 z-20 w-56 rounded-xl border border-white/10 bg-[#101010] p-1.5 shadow-2xl">
       {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
       {onReorder && <><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a esquerda`} disabled={busy || !canMoveLeft} onClick={() => void move("left")}><ChevronLeft size={16} />Mover para a esquerda</button><button type="button" className="menu-action" aria-label={`Mover lista ${column.name} para a direita`} disabled={busy || !canMoveRight} onClick={() => void move("right")}><ChevronRight size={16} />Mover para a direita</button></>}
-      {canRenameOrDelete ? <button type="button" className="menu-action" disabled={busy} onClick={() => { setName(column.name); setError(""); setMenuOpen(false); setRenaming(true); }}><Pencil size={15} />Renomear lista</button> : null}
-      {canRenameOrDelete ? <button type="button" className="menu-action danger-text" disabled={busy} onClick={() => { setMenuOpen(false); setConfirmingDelete(true); }}><Trash2 size={15} />Excluir lista</button> : null}
+      {canRename ? <button type="button" className="menu-action" disabled={busy} onClick={() => { setName(column.name); setError(""); setMenuOpen(false); setRenaming(true); }}><Pencil size={15} />Renomear lista</button> : null}
+      {canDelete ? <button type="button" className="menu-action danger-text" disabled={busy} onClick={() => { setMenuOpen(false); setConfirmingDelete(true); }}><Trash2 size={15} />Excluir lista</button> : null}
     </div>}
-    {canRenameOrDelete && confirmingDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da lista" title="Excluir lista?" itemName={column.name} description="A lista será removida permanentemente. Só é possível excluir listas que não possuem solicitações." busy={busy} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void remove()} />}
+    {canDelete && confirmingDelete && <ConfirmDialog ariaLabel="Confirmar exclusão da lista" title="Excluir lista?" itemName={column.name} description="A lista será removida permanentemente. Só é possível excluir listas que não possuem solicitações." busy={busy} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void remove()} />}
   </div>;
 }
