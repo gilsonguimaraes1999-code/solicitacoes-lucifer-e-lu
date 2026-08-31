@@ -1,5 +1,5 @@
 import { cityNameSchema } from "@/features/cities/schemas";
-import type { City, CityWithCount } from "@/features/cities/types";
+import type { City, CityReorderPlacement, CityWithCount } from "@/features/cities/types";
 import { createBrowserClient } from "@/lib/supabase/browser";
 
 type CityWithRawCount = City & { request_cities?: Array<{ count: number }> };
@@ -13,7 +13,9 @@ export async function listCities() {
   const response = await createBrowserClient()
     .from("cities")
     .select("*, request_cities(count)")
-    .order("name");
+    .order("position")
+    .order("name")
+    .order("id");
   if (response.error) throw response.error;
   return ((response.data ?? []) as CityWithRawCount[]).map(mapCityWithCount);
 }
@@ -42,4 +44,14 @@ export async function reactivateCity(id: string) {
   const response = await createBrowserClient().rpc("reactivate_city", { city_id: id });
   if (response.error) throw response.error;
   return response.data as City;
+}
+
+export async function reorderCity(id: string, placement: CityReorderPlacement) {
+  const response = await createBrowserClient().rpc("reorder_city", {
+    city_id: id,
+    before_city_id: placement.beforeCityId ?? null,
+    after_city_id: placement.afterCityId ?? null,
+  });
+  if (response.error) throw response.error;
+  return (response.data ?? []) as City[];
 }
