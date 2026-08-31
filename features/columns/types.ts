@@ -4,6 +4,7 @@ export type SystemColumnKey = (typeof SYSTEM_COLUMN_KEYS)[number];
 interface BoardColumnBase {
   id: string;
   name: string;
+  color?: string;
   position: number;
   created_by: string | null;
   created_at: string;
@@ -16,5 +17,5 @@ export type BoardColumn =
   | (BoardColumnBase & { kind: "custom"; system_key: null; assignee_id: null });
 
 export type CreateColumnInput =
-  | { kind: "assignee"; name: string; assigneeId: string }
-  | { kind: "custom"; name: string; assigneeId: null };
+  | { kind: "assignee"; name: string; assigneeId: string; color: string }
+  | { kind: "custom"; name: string; assigneeId: null; color: string };
