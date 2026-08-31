@@ -21,7 +21,7 @@ describe("AddColumn", () => {
     expect(screen.queryByRole("button", { name: /adicionar outra lista/i })).not.toBeInTheDocument();
   });
 
-  it("exclui responsáveis já representados e preenche o nome ao selecionar", () => {
+  it("exclui responsáveis já representados e mantém o nome vinculado ao cadastro", () => {
     render(<AddColumn columns={columns} profiles={profiles} canManageColumns onCreate={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
@@ -32,7 +32,8 @@ describe("AddColumn", () => {
     expect(select).toHaveTextContent("Bruno");
 
     fireEvent.change(select, { target: { value: "22222222-2222-4222-8222-222222222222" } });
-    expect(screen.getByLabelText("Nome da lista")).toHaveValue("Bruno");
+    expect(screen.queryByLabelText("Nome da lista")).not.toBeInTheDocument();
+    expect(screen.getByText("O nome da lista acompanha o cadastro do responsável.")).toBeInTheDocument();
   });
 
   it("envia uma lista de responsável com o tipo explícito", async () => {
@@ -42,10 +43,9 @@ describe("AddColumn", () => {
     fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
     fireEvent.click(screen.getByRole("button", { name: "Lista de responsável" }));
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: "22222222-2222-4222-8222-222222222222" } });
-    fireEvent.change(screen.getByLabelText("Nome da lista"), { target: { value: "Atendimento Bruno" } });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar lista" }));
 
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ kind: "assignee", name: "Atendimento Bruno", assigneeId: "22222222-2222-4222-8222-222222222222" }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ kind: "assignee", name: "Bruno", assigneeId: "22222222-2222-4222-8222-222222222222" }));
   });
 
   it("mantém a lista personalizada disponível e envia o tipo custom com responsável nulo", async () => {
@@ -84,7 +84,7 @@ describe("AddColumn", () => {
 });
 
 describe("ColumnActions", () => {
-  it("exibe somente ações de movimentação para colunas de sistema com permissão", () => {
+  it("permite renomear colunas de sistema, mas não excluí-las", () => {
     const systemColumn: BoardColumn = { ...columns[0], name: "Pendente", kind: "system", assignee_id: null, system_key: "pending" };
     render(<ColumnActions column={systemColumn} canManageColumns canMoveRight onRename={vi.fn()} onReorder={vi.fn()} onDelete={vi.fn()} />);
 
@@ -92,6 +92,16 @@ describe("ColumnActions", () => {
 
     expect(screen.getByRole("button", { name: "Mover lista Pendente para a esquerda" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Mover lista Pendente para a direita" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Renomear lista" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excluir lista" })).not.toBeInTheDocument();
+  });
+
+  it("não permite renomear nem excluir colunas de responsável", () => {
+    render(<ColumnActions column={columns[0]} canManageColumns canMoveRight onRename={vi.fn()} onReorder={vi.fn()} onDelete={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
+
+    expect(screen.getByRole("button", { name: "Mover lista Ana para a direita" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Renomear lista" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Excluir lista" })).not.toBeInTheDocument();
   });
@@ -121,20 +131,22 @@ describe("ColumnActions", () => {
 
   it("renomeia a coluna usando o nome validado", async () => {
     const onRename = vi.fn().mockResolvedValue(undefined);
-    render(<ColumnActions column={columns[0]} canManageColumns onRename={onRename} onDelete={vi.fn()} />);
+    const systemColumn: BoardColumn = { ...columns[0], name: "Pendente", kind: "system", assignee_id: null, system_key: "pending" };
+    render(<ColumnActions column={systemColumn} canManageColumns onRename={onRename} onDelete={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Pendente" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
-    fireEvent.change(screen.getByLabelText("Novo nome da lista"), { target: { value: "Atendimento Ana" } });
+    fireEvent.change(screen.getByLabelText("Novo nome da lista"), { target: { value: "Aguardando" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar nome" }));
 
-    await waitFor(() => expect(onRename).toHaveBeenCalledWith("33333333-3333-4333-8333-333333333333", "Atendimento Ana"));
+    await waitFor(() => expect(onRename).toHaveBeenCalledWith("33333333-3333-4333-8333-333333333333", "Aguardando"));
   });
 
   it("fecha o menu quando o usuário clica fora dele", () => {
-    render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
+    const customColumn: BoardColumn = { ...columns[0], name: "Prioridades", kind: "custom", system_key: null, assignee_id: null };
+    render(<ColumnActions column={customColumn} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Prioridades" }));
     expect(screen.getByRole("button", { name: "Renomear lista" })).toBeInTheDocument();
 
     fireEvent.pointerDown(document.body);
@@ -143,9 +155,10 @@ describe("ColumnActions", () => {
   });
 
   it("inicia a edição com o nome remoto mais recente", () => {
-    const { rerender } = render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
+    const customColumn: BoardColumn = { ...columns[0], name: "Prioridades", kind: "custom", system_key: null, assignee_id: null };
+    const { rerender } = render(<ColumnActions column={customColumn} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
 
-    rerender(<ColumnActions column={{ ...columns[0], name: "Nome recebido em tempo real" }} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
+    rerender(<ColumnActions column={{ ...customColumn, name: "Nome recebido em tempo real" }} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Nome recebido em tempo real" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
 
@@ -154,12 +167,13 @@ describe("ColumnActions", () => {
 
   it("informa quando a coluna ocupada não pode ser excluída", async () => {
     const onDelete = vi.fn().mockRejectedValue({ code: "23503" });
-    render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={onDelete} />);
+    const customColumn: BoardColumn = { ...columns[0], name: "Prioridades", kind: "custom", system_key: null, assignee_id: null };
+    render(<ColumnActions column={customColumn} canManageColumns onRename={vi.fn()} onDelete={onDelete} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Prioridades" }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir lista" }));
     expect(screen.getByRole("dialog", { name: "Confirmar exclusão da lista" })).toBeInTheDocument();
-    expect(screen.getByText("Ana")).toBeInTheDocument();
+    expect(screen.getByText("Prioridades")).toBeInTheDocument();
     expect(onDelete).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
@@ -169,9 +183,10 @@ describe("ColumnActions", () => {
 
   it("cancela a confirmação sem excluir a lista", () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
-    render(<ColumnActions column={columns[0]} canManageColumns onRename={vi.fn()} onDelete={onDelete} />);
+    const customColumn: BoardColumn = { ...columns[0], name: "Prioridades", kind: "custom", system_key: null, assignee_id: null };
+    render(<ColumnActions column={customColumn} canManageColumns onRename={vi.fn()} onDelete={onDelete} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Ana" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Prioridades" }));
     fireEvent.click(screen.getByRole("button", { name: "Excluir lista" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
 
