@@ -84,7 +84,8 @@ h1, h2, h3, .font-display { font-family: "Outfit", "Inter", sans-serif; }
 .user-row:hover { background: rgba(255,255,255,.025); }
 .avatar { display: grid; width: 2.4rem; height: 2.4rem; flex: none; place-items: center; border: 1px solid rgba(212,175,55,.3); border-radius: 999px; background: rgba(212,175,55,.12); color: var(--gold-bright); font-family: "Outfit",sans-serif; font-weight: 800; }
 .kanban-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(min(100%,280px),1fr); align-items: start; gap: 1rem; }
-.kanban-board-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; padding-bottom: .75rem; scrollbar-color: rgba(212,175,55,.72) rgba(255,255,255,.055); scrollbar-width: thin; }
+.kanban-board-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; padding-bottom: .75rem; cursor: grab; scrollbar-color: rgba(212,175,55,.72) rgba(255,255,255,.055); scrollbar-width: thin; }
+.kanban-board-scroll[data-panning="true"] { cursor: grabbing; user-select: none; }
 .kanban-board-scroll::-webkit-scrollbar { height: 10px; }
 .kanban-board-scroll::-webkit-scrollbar-track { border-radius: 999px; background: rgba(255,255,255,.055); }
 .kanban-board-scroll::-webkit-scrollbar-thumb { border: 2px solid #080808; border-radius: 999px; background: rgba(212,175,55,.72); }
