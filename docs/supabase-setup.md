@@ -147,3 +147,120 @@ commit;
 ```
 
 Depois, restaure a aplicação anterior e repita os smokes de criação e edição. Registre esse `GRANT` como uma nova migration de recuperação; não apague nem edite `013` e não use `migration repair` para declarar um estado diferente do schema real. A reabertura dos RPCs legados reduz as garantias de cidades e deve durar apenas até a aplicação city-aware voltar a ser publicada e um novo lockdown revisado ser aplicado.
+
+## Reparação do catálogo inicial de cidades — migration 014
+
+A migration `202608300014_repair_canonical_cities.sql` corrige exclusivamente o catálogo produzido pela `012`. Imediatamente após sua aplicação, o catálogo contém, ativas, somente estas 14 cidades: `Nobre`, `Santa`, `Maresia`, `Grande`, `Fronteira`, `Real`, `Prime`, `Malta`, `Liberty99`, `District99`, `Krown`, `KNG`, `Royal` e `Orizon`. UUIDs e vínculos de nomes canônicos já existentes são preservados. Vínculos com outros nomes e as respectivas cidades são removidos sem tentar inferir uma cidade substituta; `requests.requester_name` permanece intacto. A migration não altera RPCs, permissões ou restrições de criação, portanto o catálogo volta a aceitar cidades dinâmicas normalmente depois do commit.
+
+Esse reparo remove dados relacionais. Faça backup e agende uma janela curta de manutenção. Se a Supabase CLI estiver disponível e o projeto correto estiver vinculado, confirme que `001`–`013` estão alinhadas no histórico remoto e que `014` e `015` são as únicas migrations pendentes. A `015` deve permanecer pendente nesta etapa:
+
+```powershell
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+O dry-run deve listar `202608300014_repair_canonical_cities.sql` antes de `202608300015_custom_board_columns.sql`, sem nenhuma outra migration. Sem CLI, registre essa limitação no controle de mudanças e preserve a reconciliação do histórico como pendência antes de qualquer futuro `db push`; isso não impede o rollout manual pelo SQL Editor. Em seguida, faça um inventário dos dados que serão removidos e guarde o resultado junto ao registro do rollout:
+
+```sql
+select city.id, city.name, count(link.request_id) as request_links
+from public.cities city
+left join public.request_cities link on link.city_id = city.id
+where lower(trim(city.name)) not in (
+  'nobre', 'santa', 'maresia', 'grande', 'fronteira', 'real', 'prime',
+  'malta', 'liberty99', 'district99', 'krown', 'kng', 'royal', 'orizon'
+)
+group by city.id, city.name
+order by lower(trim(city.name)), city.id;
+```
+
+Interrompa o rollout se algum nome fora da lista representar uma cidade válida que precise ser conservada: a decisão de mapeamento deve ser revisada em uma nova migration, nunca improvisada durante a execução. Com a aplicação em manutenção, aplique somente `014`. O arquivo já delimita sua própria transação, bloqueia escritas concorrentes nas tabelas envolvidas e aborta integralmente se as validações de catálogo, vínculos preservados ou `requester_name` falharem:
+
+```powershell
+psql $env:SUPABASE_DB_URL -X -v ON_ERROR_STOP=1 `
+  -f supabase/migrations/202608300014_repair_canonical_cities.sql
+```
+
+Como alternativa completa quando `psql` não estiver disponível, abra o SQL Editor do projeto correto, cole **todo** o conteúdo de `supabase/migrations/202608300014_repair_canonical_cities.sql`, execute-o uma única vez e guarde o resultado da execução. Não copie apenas trechos: a migration contém sua própria transação e validações.
+
+Após uma execução bem-sucedida por `psql` ou SQL Editor, valide a `014` antes de seguir para a `015`:
+
+```sql
+select name
+from public.cities
+where active
+order by name;
+
+select count(*) as noncanonical_links
+from public.request_cities link
+join public.cities city on city.id = link.city_id
+where city.name not in (
+  'Nobre', 'Santa', 'Maresia', 'Grande', 'Fronteira', 'Real', 'Prime',
+  'Malta', 'Liberty99', 'District99', 'Krown', 'KNG', 'Royal', 'Orizon'
+);
+```
+
+O primeiro resultado deve conter exatamente as 14 cidades canônicas e o segundo deve ser `0`. Solicitações que só possuíam vínculos removidos ficam sem cidade; a aplicação deve exibir `Não definida`. Não as associe em massa: revise cada caso e selecione uma cidade somente quando houver informação de negócio confiável.
+
+Executar SQL manualmente **não** atualiza `supabase_migrations.schema_migrations`. Se a CLI estiver disponível, somente depois de confirmar o sucesso do SQL da `014`, reconcilie esta versão e confira a fila:
+
+```powershell
+npx supabase migration repair 202608300014 --status applied --linked
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+O `migration list` deve alinhar `001`–`014`; o dry-run deve listar apenas `202608300015_custom_board_columns.sql`. Não execute `db push` nesta etapa. Se a CLI continuar indisponível, não tente editar o histórico manualmente: mantenha a reconciliação de `014` registrada como pendência obrigatória antes de um futuro `db push` e prossiga somente pelo SQL Editor para a validação e a `015` descritas abaixo. Faça o smoke test com uma conta autorizada: abra solicitações que já tinham vínculos canônicos, crie uma cidade temporária pela interface e confirme que ela aparece no seletor. Renomeie, desative e reative essa cidade para provar que a gestão continua dinâmica.
+
+Se a execução falhar, a própria transação faz rollback e a versão `014` não deve ser marcada como aplicada. Depois do commit, a recuperação exige restaurar o backup ou aplicar uma nova migration revisada; não edite `012`–`014` e não use `migration repair` para mascarar divergência entre histórico e schema.
+
+## Rollout de listas personalizadas — migration 015
+
+Execute esta etapa somente depois de aplicar e validar a reparação de cidades `014`. A migration `202608300015_custom_board_columns.sql` é aditiva: permite `board_columns.kind = 'custom'`, exige que listas personalizadas não tenham `system_key` nem `assignee_id`, adiciona `create_custom_board_column(text,numeric)` e permite reordenar também as listas de sistema. Ela não libera renomear nem excluir listas de sistema.
+
+1. Com o backup, o preflight e a validação da `014` registrados, confirme pela CLI, quando disponível, que `001`–`014` estão alinhadas e que apenas a `015` aparece pendente. Sem CLI, mantenha a pendência de reconciliação de `014` registrada e não faça `db push` até resolvê-la.
+
+```powershell
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+2. Aplique somente a `015`, depois de validar a `014`. O arquivo já delimita sua própria transação:
+
+```powershell
+psql $env:SUPABASE_DB_URL -X -v ON_ERROR_STOP=1 `
+  -f supabase/migrations/202608300015_custom_board_columns.sql
+```
+
+Quando não houver `psql`, abra o SQL Editor do projeto correto, cole **todo** o conteúdo de `supabase/migrations/202608300015_custom_board_columns.sql`, execute-o uma única vez e guarde o resultado. Essa execução manual também não atualiza `supabase_migrations.schema_migrations`.
+
+3. Após uma execução bem-sucedida por `psql` ou SQL Editor, valide no banco antes de publicar:
+
+```sql
+select conname, pg_get_constraintdef(oid)
+from pg_constraint
+where conrelid = 'public.board_columns'::regclass
+  and conname in ('board_columns_kind_check', 'board_columns_shape')
+order by conname;
+
+select
+  to_regprocedure('public.create_custom_board_column(text,numeric)') as create_custom,
+  to_regprocedure('public.reorder_board_column(uuid,numeric)') as reorder_column;
+```
+
+Os dois constraints devem existir: `board_columns_kind_check` aceita somente `system`, `assignee` e `custom`; `board_columns_shape` exige `system_key` e veda responsável para `system`, exige responsável e veda chave de sistema para `assignee`, e deixa ambos nulos para `custom`. As duas funções devem resolver. Como um usuário autorizado, crie uma lista personalizada pela RPC `create_custom_board_column(text,numeric)`, confirme que ela retorna `kind = 'custom'` sem chave de sistema ou responsável, e remova-a se estiver vazia. Confirme também que `reorder_board_column(uuid,numeric)` reordena uma coluna de sistema, enquanto `rename_board_column` e `delete_board_column` continuam recusando uma coluna de sistema.
+
+4. Se a CLI estiver disponível e o SQL da `015` foi confirmado, reconcilie somente essa versão e confira que não há migrations pendentes:
+
+```powershell
+npx supabase migration repair 202608300015 --status applied --linked
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+O `migration list` deve alinhar `001`–`015` e o dry-run não deve listar migrations. Se a CLI continuar indisponível, não tente inserir ou alterar `supabase_migrations.schema_migrations` pelo SQL Editor: registre a reconciliação de `014` e `015` como pendência obrigatória antes do próximo `db push`. Isso não bloqueia a publicação manual da aplicação já validada.
+
+5. Só então publique a versão da aplicação correspondente à migration `015` e aguarde o deploy ficar Ready. Não publique uma aplicação que ainda presume que as três listas de sistema ficam sempre na mesma posição.
+
+6. No smoke test final, com um usuário autorizado, crie os dois tipos em `+ Adicionar outra lista` (`Responsável` e `Personalizada`); o responsável deve vir apenas da lista de perfis aprovados e cada solicitação deve exigir exatamente um responsável. Renomeie e exclua uma lista personalizada vazia, confirme que as listas de sistema não mostram essas ações e reordene listas de sistema, de responsável e personalizadas pelo cabeçalho. Arraste um cartão entre listas, force uma falha de rede para conferir a restauração otimista, recarregue para confirmar persistência e confirme que o preview de coluna é distinto do preview de cartão. Por fim, verifique que o cabeçalho permanece visível e que os cartões usam rolagem interna após aproximadamente cinco itens.
+
+Em caso de falha da `015`, a transação faz rollback e ela não deve ser marcada como aplicada. Depois do commit, corrija o problema em uma nova migration revisada; não edite `015` nem use `migration repair` para declarar um schema que não existe.
