@@ -1,14 +1,20 @@
 export const SYSTEM_COLUMN_KEYS = ["pending", "in_progress", "completed"] as const;
 export type SystemColumnKey = (typeof SYSTEM_COLUMN_KEYS)[number];
 
-export interface BoardColumn {
+interface BoardColumnBase {
   id: string;
   name: string;
-  kind: "system" | "assignee";
-  system_key: SystemColumnKey | null;
-  assignee_id: string | null;
   position: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type BoardColumn =
+  | (BoardColumnBase & { kind: "system"; system_key: SystemColumnKey; assignee_id: null })
+  | (BoardColumnBase & { kind: "assignee"; system_key: null; assignee_id: string })
+  | (BoardColumnBase & { kind: "custom"; system_key: null; assignee_id: null });
+
+export type CreateColumnInput =
+  | { kind: "assignee"; name: string; assigneeId: string }
+  | { kind: "custom"; name: string; assigneeId: null };
