@@ -1,5 +1,5 @@
 begin;
-select plan(146);
+select plan(147);
 
 select has_table('public', 'profiles', 'profiles existe');
 select has_table('public', 'user_permissions', 'user_permissions existe');
@@ -359,14 +359,14 @@ select results_eq(
   $$,
   $$
     values (
-      'Gestão'::text,
+      'Gestor RPC'::text,
       'assignee'::text,
       '00000000-0000-0000-0000-000000000302'::uuid,
       4096::numeric,
       '00000000-0000-0000-0000-000000000301'::uuid
     )
   $$,
-  'owner cria coluna vinculada com dados normalizados'
+  'owner cria coluna vinculada usando o nome cadastrado do responsável'
 );
 
 select results_eq(
@@ -404,14 +404,14 @@ select results_eq(
   $$,
   $$
     values (
-      'Operações'::text,
+      'Membro RPC'::text,
       'assignee'::text,
       '00000000-0000-0000-0000-000000000303'::uuid,
       5120::numeric,
       '00000000-0000-0000-0000-000000000302'::uuid
     )
   $$,
-  'membro autorizado cria coluna vinculada'
+  'membro autorizado cria coluna vinculada usando o nome cadastrado'
 );
 
 do $$ begin
@@ -505,16 +505,30 @@ select throws_ok(
   'responsável não aprovado é recusado'
 );
 
-select results_eq(
+select throws_ok(
   $$
-    select renamed.name, renamed.assignee_id
-    from public.rename_board_column(
+    select public.rename_board_column(
       (select id from public.board_columns where assignee_id = '00000000-0000-0000-0000-000000000303'),
       '  Entregas  '
-    ) renamed
+    )
   $$,
-  $$ values ('Entregas'::text, '00000000-0000-0000-0000-000000000303'::uuid) $$,
-  'renomeação devolve coluna atualizada'
+  '23514',
+  null,
+  'coluna de responsável não pode ser renomeada manualmente'
+);
+
+update public.profiles
+set full_name = 'Membro RPC atualizado'
+where id = '00000000-0000-0000-0000-000000000303';
+
+select results_eq(
+  $$
+    select name
+    from public.board_columns
+    where assignee_id = '00000000-0000-0000-0000-000000000303'
+  $$,
+  $$ values ('Membro RPC atualizado'::text) $$,
+  'coluna de responsável acompanha a alteração do nome cadastrado'
 );
 
 select results_eq(
@@ -565,16 +579,16 @@ select throws_ok(
   'reordenação recusa posição NaN'
 );
 
-select throws_ok(
+select results_eq(
   $$
-    select public.rename_board_column(
+    select renamed.name, renamed.system_key
+    from public.rename_board_column(
       (select id from public.board_columns where system_key = 'pending'),
-      'Outro nome'
-    )
+      'Aguardando'
+    ) renamed
   $$,
-  '23514',
-  null,
-  'coluna de sistema não pode ser renomeada'
+  $$ values ('Aguardando'::text, 'pending'::text) $$,
+  'coluna de sistema muda o título sem alterar o identificador interno'
 );
 
 select results_eq(
