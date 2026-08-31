@@ -84,10 +84,22 @@ describe("AddColumn", () => {
 });
 
 describe("ColumnActions", () => {
-  it("não exibe ações para colunas de sistema ou sem permissão", () => {
-    render(<><ColumnActions column={{ ...columns[0], kind: "system", assignee_id: null, system_key: "pending" }} canManageColumns onRename={vi.fn()} onDelete={vi.fn()} /><ColumnActions column={columns[0]} canManageColumns={false} onRename={vi.fn()} onDelete={vi.fn()} /></>);
+  it("exibe somente ações de movimentação para colunas de sistema com permissão", () => {
+    const systemColumn: BoardColumn = { ...columns[0], name: "Pendente", kind: "system", assignee_id: null, system_key: "pending" };
+    render(<ColumnActions column={systemColumn} canManageColumns canMoveRight onRename={vi.fn()} onReorder={vi.fn()} onDelete={vi.fn()} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Pendente" }));
+
+    expect(screen.getByRole("button", { name: "Mover lista Pendente para a esquerda" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Mover lista Pendente para a direita" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Renomear lista" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excluir lista" })).not.toBeInTheDocument();
+  });
+
+  it("não exibe menu sem permissão para gerenciar colunas", () => {
+    render(<ColumnActions column={{ ...columns[0], kind: "system", assignee_id: null, system_key: "pending" }} canManageColumns={false} onRename={vi.fn()} onReorder={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: /abrir ações da lista/i })).not.toBeInTheDocument();
   });
 
   it("exibe ações administrativas para listas personalizadas", () => {
