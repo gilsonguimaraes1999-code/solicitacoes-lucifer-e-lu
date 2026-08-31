@@ -719,7 +719,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
           const type = dragItemType(active.data.current);
           setActiveDrag(type ? { id: String(active.id), type } : null);
           }} onDragCancel={() => setActiveDrag(null)} onDragEnd={handleDragEnd} accessibility={accessibility}>
-          <div className="kanban-grid" aria-label="Quadro de listas">
+          <div className="kanban-grid kanban-board-scroll" role="region" aria-label="Quadro de listas" tabIndex={0}>
             <SortableContext items={visibleColumns.map((column) => column.id)} strategy={horizontalListSortingStrategy}>
               {visibleColumns.map((column) => {
                 const columnIndex = columns.findIndex((item) => item.id === column.id);
