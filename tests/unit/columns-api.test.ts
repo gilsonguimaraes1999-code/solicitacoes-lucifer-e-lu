@@ -40,7 +40,7 @@ beforeEach(() => {
 
 describe("column API", () => {
   it("encaminha a lista custom com responsável nulo para a RPC própria", async () => {
-    const input: CreateColumnInput = { kind: "custom", name: "Prioridades", assigneeId: null };
+    const input: CreateColumnInput = { kind: "custom", name: "Prioridades", assigneeId: null, color: "#ff3366" };
     mocks.rpc.mockResolvedValue({ data: customColumn, error: null });
 
     await expect(createBoardColumn(input, 5120)).resolves.toEqual(customColumn);
@@ -48,6 +48,7 @@ describe("column API", () => {
     expect(mocks.rpc).toHaveBeenCalledWith("create_custom_board_column", {
       new_name: "Prioridades",
       new_position: 5120,
+      new_color: "#ff3366",
     });
   });
 

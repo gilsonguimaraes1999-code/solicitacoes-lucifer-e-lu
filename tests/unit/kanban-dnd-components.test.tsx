@@ -39,7 +39,7 @@ vi.mock("@dnd-kit/sortable", async (importOriginal) => {
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { RequestCard } from "@/components/kanban/request-card";
 
-const customColumn: BoardColumn = { id: "column-priorities", name: "Prioridades", kind: "custom", system_key: null, assignee_id: null, position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+const customColumn: BoardColumn = { id: "column-priorities", name: "Prioridades", color: "#ff3366", kind: "custom", system_key: null, assignee_id: null, position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
 const systemColumn: BoardColumn = { ...customColumn, id: "column-pending", name: "Pendente", kind: "system", system_key: "pending" };
 const assigneeColumn: BoardColumn = { ...customColumn, id: "column-lucifer", name: "Lucifer", kind: "assignee", system_key: null, assignee_id: "profile-1" };
 const request: RequestRecord = { id: "request-1", title: "Pedido", description: null, cities: [], assigned_to: "profile-1", external_url: null, tags: [], status: null, column_id: customColumn.id, position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-1", full_name: "Lucifer" } };
@@ -72,6 +72,13 @@ describe("Kanban DnD components", () => {
     expect(mocks.sortableArguments[0]).toEqual(expect.objectContaining({ id: request.id, data: { type: "request", columnId: customColumn.id } }));
     fireEvent.click(screen.getByRole("button", { name: `Abrir ${request.title}` }));
     expect(onOpen).toHaveBeenCalledOnce();
+    expect(screen.getByText("Criada em: 28/08/2026 21:00:00")).toBeInTheDocument();
+  });
+
+  it("aplica a cor persistida à etiqueta da coluna", () => {
+    render(<KanbanColumn column={customColumn} requests={[]} canMove canManageColumns onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "Prioridades" })).toHaveStyle({ color: "#ff3366" });
   });
 
   it("mantém o pointer drag no cabeçalho e isola semântica e teclado em um botão dedicado", () => {

@@ -74,6 +74,11 @@ afterEach(() => {
 });
 
 describe("RequestDialog destination", () => {
+  it("mostra a data e o horário de criação nos detalhes", () => {
+    render(<RequestDialog {...baseProps} request={request} />);
+
+    expect(screen.getByText("Criada em: 28/08/2026 21:00:00")).toBeInTheDocument();
+  });
   it("usa um menu customizado de escolha única com somente responsáveis aprovados", () => {
     const pendingProfile: Profile = {
       ...profiles[0],

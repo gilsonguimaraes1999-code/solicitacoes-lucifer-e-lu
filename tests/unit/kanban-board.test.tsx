@@ -274,7 +274,7 @@ describe("KanbanBoard", () => {
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profileId } });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar lista" }));
 
-    await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledWith({ kind: "assignee", name: "Bruno", assigneeId: profileId }, 5120));
+    await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledWith({ kind: "assignee", name: "Bruno", assigneeId: profileId, color: "#a78bfa" }, 5120));
     expect(await screen.findByText("Lista adicionada.")).toBeInTheDocument();
   });
 
@@ -288,7 +288,7 @@ describe("KanbanBoard", () => {
     fireEvent.change(screen.getByLabelText("Nome da lista"), { target: { value: "Prioridades" } });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar lista" }));
 
-    await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledWith({ kind: "custom", name: "Prioridades", assigneeId: null }, 5120));
+    await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledWith({ kind: "custom", name: "Prioridades", assigneeId: null, color: "#d4af37" }, 5120));
     expect(await screen.findByRole("heading", { level: 2, name: "Prioridades" })).toBeInTheDocument();
   });
 
@@ -414,7 +414,7 @@ describe("KanbanBoard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Prioridades" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
     fireEvent.change(screen.getByLabelText("Novo nome da lista"), { target: { value: "Nome atrasado" } });
-    fireEvent.click(screen.getByRole("button", { name: "Salvar nome" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mocks.renameBoardColumn).toHaveBeenCalledOnce());
     emitColumnChange("DELETE", renamedColumn);
     await act(async () => {

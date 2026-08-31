@@ -11,15 +11,17 @@ describe("column domain", () => {
   it("validates discriminated inputs for assignee and custom columns", () => {
     const assigneeId = crypto.randomUUID();
 
-    expect(createColumnInputSchema.parse({ kind: "assignee", name: "  Lucifer  ", assigneeId })).toEqual({
+    expect(createColumnInputSchema.parse({ kind: "assignee", name: "  Lucifer  ", assigneeId, color: "#A78BFA" })).toEqual({
       kind: "assignee",
       name: "Lucifer",
       assigneeId,
+      color: "#a78bfa",
     });
-    expect(createColumnInputSchema.parse({ kind: "custom", name: "  Prioridades  ", assigneeId: null })).toEqual({
+    expect(createColumnInputSchema.parse({ kind: "custom", name: "  Prioridades  ", assigneeId: null, color: "#D4AF37" })).toEqual({
       kind: "custom",
       name: "Prioridades",
       assigneeId: null,
+      color: "#d4af37",
     });
     expect(() => createColumnInputSchema.parse({ kind: "custom", name: "Prioridades" })).toThrow();
     expect(() => createColumnInputSchema.parse({ kind: "custom", name: "Prioridades", assigneeId })).toThrow();
