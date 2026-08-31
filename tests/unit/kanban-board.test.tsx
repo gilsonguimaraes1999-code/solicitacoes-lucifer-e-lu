@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import type { ClientRect, Modifiers } from "@dnd-kit/core";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoardColumn } from "@/features/columns/types";
@@ -13,7 +15,24 @@ const mocks = vi.hoisted(() => ({
   reorderBoardColumn: vi.fn(),
   deleteBoardColumn: vi.fn(),
   columnChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => void,
+  dndContextModifiers: undefined as Modifiers | undefined,
+  dragOverlayModifiers: undefined as Modifiers | undefined,
 }));
+
+vi.mock("@dnd-kit/core", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@dnd-kit/core")>();
+  return {
+    ...original,
+    DndContext: ({ children, modifiers }: { children: ReactNode; modifiers?: Modifiers }) => {
+      mocks.dndContextModifiers = modifiers;
+      return <>{children}</>;
+    },
+    DragOverlay: ({ children, modifiers }: { children: ReactNode; modifiers?: Modifiers }) => {
+      mocks.dragOverlayModifiers = modifiers;
+      return children ? <div data-testid="drag-overlay">{children}</div> : null;
+    },
+  };
+});
 
 vi.mock("@/lib/supabase/browser", () => ({
   createBrowserClient: () => ({ channel: mocks.channel, removeChannel: mocks.removeChannel }),
@@ -37,7 +56,7 @@ const columns: BoardColumn[] = [
 ];
 
 const cities: City[] = [
-  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", position: 1024, active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
 ];
 
 const requests: RequestRecord[] = [
@@ -66,6 +85,10 @@ function emitColumnChange(eventType: "INSERT" | "UPDATE" | "DELETE", column: Boa
   });
 }
 
+function rect(rectangle: ClientRect): ClientRect {
+  return rectangle;
+}
+
 beforeEach(() => {
   mocks.createBoardColumn.mockReset();
   mocks.getBoardColumn.mockReset();
@@ -74,6 +97,8 @@ beforeEach(() => {
   mocks.deleteBoardColumn.mockReset();
   mocks.channel.mockReset();
   mocks.removeChannel.mockReset();
+  mocks.dndContextModifiers = undefined;
+  mocks.dragOverlayModifiers = undefined;
   mocks.channel.mockImplementation((name: string) => {
     const channel = {
       on: vi.fn((_event: string, _filter: Record<string, unknown>, callback: typeof mocks.columnChange) => {
@@ -119,6 +144,34 @@ describe("KanbanBoard", () => {
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Pendente", "Em progresso", "Concluído", "Lucifer"]);
   });
 
+  it("marca o quadro central como boundary e compartilha o mesmo modifier no contexto e no overlay", () => {
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={permissions} />);
+
+    const boundary = document.querySelector('[data-drag-boundary="board"]');
+    expect(boundary).not.toBeNull();
+    expect(boundary).toHaveClass("mx-auto", "max-w-[1800px]");
+    expect(mocks.dndContextModifiers).toHaveLength(1);
+    expect(mocks.dragOverlayModifiers).toBe(mocks.dndContextModifiers);
+
+    const boundaryRect = rect({ top: 50, left: 100, right: 900, bottom: 650, width: 800, height: 600 });
+    vi.spyOn(boundary as HTMLDivElement, "getBoundingClientRect").mockReturnValue(boundaryRect as DOMRect);
+    const clamped = mocks.dndContextModifiers?.[0]({
+      activatorEvent: null,
+      active: null,
+      activeNodeRect: null,
+      draggingNodeRect: rect({ top: 150, left: 200, right: 400, bottom: 350, width: 200, height: 200 }),
+      containerNodeRect: null,
+      over: null,
+      overlayNodeRect: null,
+      scrollableAncestors: [],
+      scrollableAncestorRects: [],
+      transform: { x: 600, y: 400, scaleX: 1, scaleY: 1 },
+      windowRect: null,
+    });
+
+    expect(clamped).toEqual({ x: 500, y: 300, scaleX: 1, scaleY: 1 });
+  });
+
   it("cria a lista após as colunas existentes quando há permissão", async () => {
     const profileId = "22222222-2222-4222-8222-222222222222";
     const created: BoardColumn = { id: "column-bruno", name: "Bruno", kind: "assignee", system_key: null, assignee_id: profileId, position: 5120, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
@@ -155,6 +208,23 @@ describe("KanbanBoard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista Prioridades" }));
 
     expect(screen.getByLabelText("Novo nome da lista")).toHaveValue("Prioridades");
+  });
+
+  it("permite abrir o menu de uma coluna de sistema e movê-la sem expor ações proibidas", async () => {
+    mocks.reorderBoardColumn.mockResolvedValue({ ...columns[0], position: 2560 });
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Pendente" }));
+
+    expect(screen.getByRole("button", { name: "Mover lista Pendente para a esquerda" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Mover lista Pendente para a direita" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Renomear lista" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excluir lista" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mover lista Pendente para a direita" }));
+
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith("column-pending", 2560));
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Em progresso", "Pendente", "Concluído", "Lucifer"]);
   });
 
   it("move uma coluna personalizada por uma posição visível, atravessando as colunas fixas", async () => {
