@@ -112,8 +112,8 @@ const profiles: Profile[] = [
 ];
 
 const cities: City[] = [
-  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
-  { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", position: 1024, active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+  { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", position: 2048, active: true, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
 ];
 
 const columns: BoardColumn[] = [
@@ -1233,7 +1233,8 @@ describe("KanbanBoard accessibility", () => {
   it("fornece instruções e anúncios de arraste em português com nomes", () => {
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
-    expect(mocks.accessibility.screenReaderInstructions?.draggable).toMatch(/barra de espaço/i);
+    expect(mocks.accessibility.screenReaderInstructions?.draggable).toMatch(/solicita(ç|c)ões.*barra de espaço/i);
+    expect(mocks.accessibility.screenReaderInstructions?.draggable).toMatch(/colunas.*menu/i);
     expect(mocks.accessibility.announcements?.onDragStart({ active: { id: sourceRequest.id, data: { current: { type: "request" } } } } as unknown as Parameters<Announcements["onDragStart"]>[0])).toContain(sourceRequest.title);
     expect(mocks.accessibility.announcements?.onDragOver({ active: { id: sourceRequest.id, data: { current: { type: "request" } } }, over: { id: "column-pending", data: { current: { type: "column" } } } } as unknown as Parameters<Announcements["onDragOver"]>[0])).toContain("Pendente");
     expect(mocks.accessibility.announcements?.onDragStart({ active: { id: columns[0].id, data: { current: { type: "column" } } } } as unknown as Parameters<Announcements["onDragStart"]>[0])).toContain("coluna Pendente");
