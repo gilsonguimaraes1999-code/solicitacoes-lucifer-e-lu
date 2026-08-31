@@ -301,7 +301,22 @@ describe("KanbanBoard", () => {
     expect(screen.getByLabelText("Novo nome da lista")).toHaveValue("Prioridades");
   });
 
-  it("permite abrir o menu de uma coluna de sistema e movê-la sem expor ações proibidas", async () => {
+  it("abre a renomeação ao clicar no nome de uma lista de sistema", () => {
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Renomear lista Pendente" }));
+
+    expect(screen.getByLabelText("Novo nome da lista")).toHaveValue("Pendente");
+  });
+
+  it("não oferece renomeação ao clicar no nome de uma lista de responsável", () => {
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "Lucifer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Renomear lista Lucifer" })).not.toBeInTheDocument();
+  });
+
+  it("permite abrir o menu de uma coluna de sistema, renomeá-la e movê-la sem expor exclusão", async () => {
     mocks.reorderBoardColumn.mockResolvedValue({ ...columns[0], position: 2560 });
     render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
@@ -309,7 +324,7 @@ describe("KanbanBoard", () => {
 
     expect(screen.getByRole("button", { name: "Mover lista Pendente para a esquerda" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Mover lista Pendente para a direita" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Renomear lista" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Renomear lista" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Excluir lista" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Mover lista Pendente para a direita" }));
@@ -392,11 +407,11 @@ describe("KanbanBoard", () => {
 
   it("não ressuscita uma coluna excluída antes da resposta atrasada de renomeação", async () => {
     const rename = deferred<BoardColumn>();
-    const renamedColumn = { ...columns[3], id: "33333333-3333-4333-8333-333333333333" };
+    const renamedColumn: BoardColumn = { ...columns[3], id: "33333333-3333-4333-8333-333333333333", name: "Prioridades", kind: "custom", system_key: null, assignee_id: null };
     mocks.renameBoardColumn.mockReturnValue(rename.promise);
     render(<KanbanBoard initialRequests={requests} initialColumns={[...columns.slice(0, 3), renamedColumn]} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Lucifer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ações da lista Prioridades" }));
     fireEvent.click(screen.getByRole("button", { name: "Renomear lista" }));
     fireEvent.change(screen.getByLabelText("Novo nome da lista"), { target: { value: "Nome atrasado" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar nome" }));
@@ -408,7 +423,7 @@ describe("KanbanBoard", () => {
     });
 
     expect(screen.queryByRole("heading", { level: 2, name: "Nome atrasado" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { level: 2, name: "Lucifer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2, name: "Prioridades" })).not.toBeInTheDocument();
     expect(screen.queryByText("Lista renomeada.")).not.toBeInTheDocument();
   });
 
