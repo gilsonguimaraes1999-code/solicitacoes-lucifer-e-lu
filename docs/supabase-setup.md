@@ -264,3 +264,76 @@ O `migration list` deve alinhar `001`–`015` e o dry-run não deve listar migra
 6. No smoke test final, com um usuário autorizado, crie os dois tipos em `+ Adicionar outra lista` (`Responsável` e `Personalizada`); o responsável deve vir apenas da lista de perfis aprovados e cada solicitação deve exigir exatamente um responsável. Renomeie e exclua uma lista personalizada vazia, confirme que as listas de sistema não mostram essas ações e reordene listas de sistema, de responsável e personalizadas pelo cabeçalho. Arraste um cartão entre listas, force uma falha de rede para conferir a restauração otimista, recarregue para confirmar persistência e confirme que o preview de coluna é distinto do preview de cartão. Por fim, verifique que o cabeçalho permanece visível e que os cartões usam rolagem interna após aproximadamente cinco itens.
 
 Em caso de falha da `015`, a transação faz rollback e ela não deve ser marcada como aplicada. Depois do commit, corrija o problema em uma nova migration revisada; não edite `015` nem use `migration repair` para declarar um schema que não existe.
+
+## Rollout de ordem manual das cidades — migration 016
+
+Execute esta etapa somente depois de aplicar e validar a `015`. A migration `202608310016_city_ordering.sql` envolve toda a mudança em `BEGIN/COMMIT`: cria `public.cities.position`, faz o backfill determinístico das cidades existentes, adiciona o constraint `cities_position_safe`, cria o índice `cities_position_id_idx`, passa `create_city(text)` a anexar novas cidades no fim da ordem sob lock e expõe `reorder_city(uuid,uuid,uuid)` para owner ou usuários aprovados com `can_manage_cities = true`. A RPC recebe os vizinhos desejados (`before_city_id`/`after_city_id`), valida adjacência contra a ordem atual, serializa concorrência e renormaliza atomicamente todas as posições em passos de `1024`.
+
+1. Antes de executar SQL, confirme pela CLI, quando disponível, que `001`–`015` estão alinhadas e que apenas a `016` aparece pendente. Não publique o frontend novo enquanto `cities.position` e `reorder_city` ainda não existirem no ambiente de destino.
+
+```powershell
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+O dry-run deve listar somente `202608310016_city_ordering.sql`. Se a CLI não estiver disponível, registre explicitamente essa limitação e mantenha a reconciliação do histórico como pendência obrigatória antes do próximo `db push`; isso não autoriza um push cego.
+
+2. Aplique somente a `016`. O arquivo pode ser executado diretamente sem percorrer a fila:
+
+```powershell
+psql $env:SUPABASE_DB_URL -X -v ON_ERROR_STOP=1 `
+  -f supabase/migrations/202608310016_city_ordering.sql
+```
+
+Quando `psql` não estiver disponível, abra o SQL Editor do projeto correto, cole **todo** o conteúdo de `supabase/migrations/202608310016_city_ordering.sql`, execute-o uma única vez e guarde o resultado. Essa execução manual também não atualiza `supabase_migrations.schema_migrations`.
+
+3. Valide o schema e os contratos antes de publicar:
+
+```sql
+select
+  column_name,
+  data_type,
+  is_nullable,
+  column_default
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'cities'
+  and column_name = 'position';
+
+select
+  conname,
+  pg_get_constraintdef(oid)
+from pg_constraint
+where conrelid = 'public.cities'::regclass
+  and conname = 'cities_position_safe';
+
+select
+  to_regprocedure('public.reorder_city(uuid,uuid,uuid)') as reorder_city,
+  to_regclass('public.cities_position_id_idx') as cities_position_id_idx;
+
+select id, name, position
+from public.cities
+order by position, name, id;
+```
+
+O primeiro resultado deve mostrar `numeric`, `is_nullable = NO` e default `1024`. O constraint e a função devem resolver. A listagem final deve sair em ordem determinística por `position`, `name` e `id`, sem posições nulas, zero, infinitas ou acima de `9007199254740991`.
+
+4. Faça o smoke test do comportamento novo com uma conta owner e, quando aplicável, uma conta aprovada com `can_manage_cities = true`:
+  - reordene cidades no admin com `Mover ... para cima/baixo`, recarregue e confirme persistência; valide pelo SQL Editor ou `psql` que a RPC devolve a ordem canônica completa, não apenas a linha movida;
+   - confirme que um usuário sem `can_manage_cities` não consegue reordenar, criar, renomear, desativar nem reativar cidades;
+   - abra o formulário de solicitação e valide que o seletor de cidades segue a ordem persistida, não uma ordenação alfabética local;
+   - confira que o menu de ações continua aparecendo nas listas do sistema apenas com mover para esquerda/direita, que a prévia de arraste fica contida na moldura central do quadro e que o seletor customizado de status da conta substitui o `select` nativo sem reintroduzir brilho dourado externo nos botões primários.
+
+5. Se a CLI estiver disponível e o SQL da `016` foi confirmado, reconcilie somente essa versão e confirme que não restou migration pendente:
+
+```powershell
+npx supabase migration repair 202608310016 --status applied --linked
+npx supabase migration list
+npx supabase db push --linked --dry-run
+```
+
+O `migration list` deve alinhar `001`–`016` e o dry-run não deve listar migrations. Se a CLI continuar indisponível, não tente alterar `supabase_migrations.schema_migrations` manualmente: registre a reconciliação de `016` como pendência obrigatória antes do próximo `db push`.
+
+6. Só então publique o frontend que consulta `cities` por `position`, `name` e `id` e chama `reorder_city(uuid,uuid,uuid)`. Não publique antes disso: o novo painel e os seletores dependem desses contratos. Esta documentação descreve o procedimento; ela não significa que a `016` já foi aplicada em qualquer ambiente remoto.
+
+Se a execução da `016` falhar, trate o resultado como schema não aplicado. Corrija o problema em uma nova migration revisada ou restaure o backup conforme a política da equipe; não edite a `016` nem use `migration repair` para mascarar divergência entre histórico e schema real.
