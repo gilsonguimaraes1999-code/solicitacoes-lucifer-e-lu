@@ -26,6 +26,7 @@ import {
   createCity,
   deactivateCity,
   listCities,
+  reorderCity,
   reactivateCity,
   renameCity,
 } from "@/features/cities/api";
@@ -33,6 +34,7 @@ import {
 const city = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   name: "São Paulo",
+  position: 1024,
   active: true,
   created_by: "44444444-4444-4444-8444-444444444444",
   created_at: "2026-08-29T00:00:00Z",
@@ -158,23 +160,33 @@ describe("request API", () => {
 
 describe("city API", () => {
   it("usa os nomes e argumentos de mutação de cidade", async () => {
-    mocks.rpc.mockResolvedValue({ data: city, error: null });
+    mocks.rpc.mockResolvedValueOnce({ data: city, error: null })
+      .mockResolvedValueOnce({ data: city, error: null })
+      .mockResolvedValueOnce({ data: city, error: null })
+      .mockResolvedValueOnce({ data: city, error: null })
+      .mockResolvedValueOnce({ data: [city], error: null });
 
     await expect(createCity("  São Paulo  ")).resolves.toEqual(city);
     await expect(renameCity(city.id, "  Campinas  ")).resolves.toEqual(city);
     await expect(deactivateCity(city.id)).resolves.toEqual(city);
     await expect(reactivateCity(city.id)).resolves.toEqual(city);
+    await expect(reorderCity(city.id, { afterCityId: city.id })).resolves.toEqual([city]);
 
     expect(mocks.rpc).toHaveBeenNthCalledWith(1, "create_city", { new_name: "São Paulo" });
     expect(mocks.rpc).toHaveBeenNthCalledWith(2, "rename_city", { city_id: city.id, new_name: "Campinas" });
     expect(mocks.rpc).toHaveBeenNthCalledWith(3, "deactivate_city", { city_id: city.id });
     expect(mocks.rpc).toHaveBeenNthCalledWith(4, "reactivate_city", { city_id: city.id });
+    expect(mocks.rpc).toHaveBeenNthCalledWith(5, "reorder_city", { city_id: city.id, before_city_id: null, after_city_id: city.id });
   });
 
   it("mapeia a contagem de solicitações, inclusive quando ausente", async () => {
     const first = { ...city, request_cities: [{ count: 2 }] };
     const second = { ...city, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Recife", request_cities: [] };
-    mocks.order.mockResolvedValue({ data: [first, second], error: null });
+    const orderChain = {
+      order: mocks.order,
+      then: (resolve: (value: { data: unknown[]; error: null }) => unknown) => Promise.resolve({ data: [first, second], error: null }).then(resolve),
+    };
+    mocks.order.mockImplementation(() => orderChain);
     mocks.select.mockReturnValue({ order: mocks.order });
     mocks.from.mockReturnValue({ select: mocks.select });
 
@@ -183,7 +195,9 @@ describe("city API", () => {
       { ...city, id: second.id, name: "Recife", request_count: 0 },
     ]);
     expect(mocks.select).toHaveBeenCalledWith("*, request_cities(count)");
-    expect(mocks.order).toHaveBeenCalledWith("name");
+    expect(mocks.order).toHaveBeenNthCalledWith(1, "position");
+    expect(mocks.order).toHaveBeenNthCalledWith(2, "name");
+    expect(mocks.order).toHaveBeenNthCalledWith(3, "id");
   });
 
   it("propaga erros do Supabase nas mutações de cidade", async () => {
