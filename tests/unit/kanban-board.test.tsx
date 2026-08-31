@@ -172,6 +172,22 @@ describe("KanbanBoard", () => {
     expect(clamped).toEqual({ x: 500, y: 300, scaleX: 1, scaleY: 1 });
   });
 
+  it("mantém seis colunas e o controle de adicionar na mesma faixa horizontal rolável", () => {
+    const extraColumns: BoardColumn[] = [
+      brunoColumn,
+      { ...brunoColumn, id: "column-priorities", name: "Prioridades", kind: "custom", assignee_id: null, position: 6144 },
+    ];
+    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, ...extraColumns]} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+
+    const scrollRegion = screen.getByRole("region", { name: "Quadro de listas" });
+    const addList = within(scrollRegion).getByRole("button", { name: /adicionar outra lista/i });
+
+    expect(scrollRegion).toHaveClass("kanban-grid", "kanban-board-scroll");
+    expect(scrollRegion.children).toHaveLength(7);
+    expect(addList.parentElement).toBe(scrollRegion);
+    expect(within(scrollRegion).getAllByRole("heading", { level: 2 })).toHaveLength(6);
+  });
+
   it("cria a lista após as colunas existentes quando há permissão", async () => {
     const profileId = "22222222-2222-4222-8222-222222222222";
     const created: BoardColumn = { id: "column-bruno", name: "Bruno", kind: "assignee", system_key: null, assignee_id: profileId, position: 5120, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
