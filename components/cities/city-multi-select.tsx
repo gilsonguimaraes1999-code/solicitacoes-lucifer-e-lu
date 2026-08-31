@@ -102,13 +102,16 @@ export function CityMultiSelect({ cities, value, onChange, disabled = false }: C
             <input
               ref={selectAllRef}
               type="checkbox"
-              className="h-4 w-4 accent-[#d4af37]"
+              className="peer sr-only"
               aria-label={allSelected ? "Desmarcar todas" : "Selecionar todas"}
               aria-checked={partiallySelected ? "mixed" : allSelected ? "true" : "false"}
               checked={allSelected}
               disabled={disabled || activeIds.length === 0}
               onChange={toggleAll}
             />
+            <span aria-hidden="true" className={`grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#d4af37]/60 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#0c0c0c] peer-disabled:opacity-40 ${allSelected || partiallySelected ? "border-[#d4af37] bg-[#d4af37] text-[#080808]" : "border-white/30 bg-white/[.03]"}`}>
+              {allSelected ? <Check size={12} strokeWidth={3} /> : partiallySelected ? <span className="h-0.5 w-2 rounded-full bg-[#080808]" /> : null}
+            </span>
             <span>{allSelected ? "Desmarcar todas" : "Selecionar todas"}</span>
           </label>
 
