@@ -7,6 +7,7 @@ import type { City } from "@/features/cities/types";
 const curitiba: City = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   name: "Curitiba",
+  position: 1024,
   active: true,
   created_by: null,
   created_at: "2026-08-30T00:00:00Z",
@@ -16,6 +17,7 @@ const curitiba: City = {
 const inactiveCity: City = {
   id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   name: "Recife",
+  position: 2048,
   active: false,
   created_by: null,
   created_at: "2026-08-30T00:00:00Z",
@@ -25,6 +27,7 @@ const inactiveCity: City = {
 const saoPaulo: City = {
   id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   name: "São Paulo",
+  position: 3072,
   active: true,
   created_by: null,
   created_at: "2026-08-30T00:00:00Z",
@@ -44,8 +47,8 @@ describe("CityMultiSelect", () => {
     await user.click(screen.getByRole("button", { name: "Selecionar cidades" }));
     await user.click(screen.getByRole("checkbox", { name: "Selecionar todas" }));
     expect(onChange).toHaveBeenLastCalledWith([
-      "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     ]);
 
     rerender(<CityMultiSelect cities={cities} value={["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]} onChange={onChange} />);
@@ -123,8 +126,8 @@ describe("CityMultiSelect", () => {
     await user.click(screen.getByRole("checkbox", { name: "Selecionar todas" }));
     expect(onChange).toHaveBeenLastCalledWith([
       "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-      "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     ]);
 
     rerender(<CityMultiSelect cities={cities} value={["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]} onChange={onChange} />);
@@ -135,16 +138,17 @@ describe("CityMultiSelect", () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
-  it("não mostra cidade inativa não selecionada e ordena opções ativas por nome e UUID", async () => {
+  it("não mostra cidade inativa não selecionada e segue a ordem persistida em vez da alfabética", async () => {
     const user = userEvent.setup();
-    const sameNameFirst = { ...curitiba, id: "11111111-1111-4111-8111-111111111111", name: "Águas" };
-    const sameNameSecond = { ...curitiba, id: "22222222-2222-4222-8222-222222222222", name: "Águas" };
-    render(<CityMultiSelect cities={[saoPaulo, inactiveCity, sameNameSecond, curitiba, sameNameFirst]} value={[]} onChange={vi.fn()} />);
+    const sameNameFirst = { ...curitiba, id: "11111111-1111-4111-8111-111111111111", name: "Águas", position: 1536 };
+    const sameNameSecond = { ...curitiba, id: "22222222-2222-4222-8222-222222222222", name: "Águas", position: 1536 };
+    const curitibaAfterSaoPaulo = { ...curitiba, position: 4096 };
+    render(<CityMultiSelect cities={[saoPaulo, inactiveCity, sameNameSecond, curitibaAfterSaoPaulo, sameNameFirst]} value={[]} onChange={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Selecionar cidades" }));
     expect(screen.queryByText("Recife")).not.toBeInTheDocument();
     const listbox = screen.getByRole("listbox", { name: "Cidades disponíveis" });
-    expect(within(listbox).getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["Águas", "Águas", "Curitiba", "São Paulo"]);
+    expect(within(listbox).getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["Águas", "Águas", "São Paulo", "Curitiba"]);
     expect(within(listbox).queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
