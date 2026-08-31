@@ -63,6 +63,9 @@ h1, h2, h3, .font-display { font-family: "Outfit", "Inter", sans-serif; }
 .filter-chip.active span { color: var(--gold-soft); }
 .icon-button { display: inline-grid; min-width: 2.25rem; height: 2.25rem; place-items: center; border: 1px solid rgba(255,255,255,.1); border-radius: .55rem; background: rgba(255,255,255,.045); color: rgba(255,255,255,.68); transition: .15s; }
 .icon-button:hover:not(:disabled) { border-color: rgba(212,175,55,.32); background: rgba(212,175,55,.11); color: var(--gold-bright); }
+.column-actions-trigger { display: inline-grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: .5rem; background: transparent; color: rgba(255,255,255,.68); transition: .15s; }
+.column-actions-trigger:hover:not(:disabled) { background: rgba(255,255,255,.07); color: var(--gold-bright); }
+.column-actions-trigger:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
 .menu-action { display: flex; width: 100%; align-items: center; gap: .6rem; border: 0; border-radius: .5rem; padding: .58rem .65rem; background: transparent; color: rgba(255,255,255,.72); text-align: left; font-size: .8rem; font-weight: 600; }
 .menu-action:hover:not(:disabled) { background: rgba(255,255,255,.07); color: white; }
 .danger-text { color: #ff8b96; }
