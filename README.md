@@ -72,9 +72,9 @@ Consulte [docs/deploy-vercel.md](docs/deploy-vercel.md). O repositório está pr
 
 ## Colunas e permissões
 
-- `Pendente`, `Em progresso` e `Concluído` são listas de sistema: podem ser reordenadas, mas não renomeadas nem excluídas.
-- Quando `can_manage_columns` está ativo, toda lista mostra o menu de ações; nas listas de sistema esse menu fica limitado a `Mover para a esquerda` e `Mover para a direita`.
-- `+ Adicionar outra lista` oferece os tipos `Responsável` e `Personalizada`. A lista de responsável usa um único perfil aprovado ainda sem vínculo; a personalizada tem nome livre e não tem responsável.
+- `Pendente`, `Em progresso` e `Concluído` são listas de sistema: podem ser reordenadas e renomeadas, mas não excluídas. A alteração troca o título exibido sem modificar os identificadores internos `pending`, `in_progress` e `completed`.
+- Quando `can_manage_columns` está ativo, listas de sistema e personalizadas oferecem renomeação pelo título e pelo menu de ações.
+- `+ Adicionar outra lista` oferece os tipos `Responsável` e `Personalizada`. A lista de responsável usa um único perfil aprovado ainda sem vínculo, mantém o título sincronizado com o nome cadastrado e não pode ser renomeada manualmente; a personalizada tem nome livre e pode ser renomeada.
 - `Gerenciar colunas` é nativo do owner. Um membro aprovado só recebe esse controle quando a permissão `can_manage_columns` estiver habilitada no painel administrativo.
 - Os chips `Todos`, das colunas fixas e das colunas de responsáveis apenas filtram a visualização; a busca continua combinada com o chip selecionado.
 - A localização canônica é `requests.column_id`. As ações `Mover para` no diálogo e o arrastar/soltar movem o cartão pela coluna de destino; alterar conteúdo ou responsável não remove um cartão de uma lista personalizada escolhida manualmente.
