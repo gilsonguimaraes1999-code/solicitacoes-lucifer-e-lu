@@ -51,13 +51,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Kanban DnD components", () => {
-  it("estende a área rolável de solicitações por toda a altura disponível da coluna", () => {
+  it("cresce com as solicitações sem ultrapassar a altura disponível do quadro", () => {
     const { container } = render(<KanbanColumn column={customColumn} requests={[request]} canMove canManageColumns canReorderColumn onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
 
     const column = container.querySelector("section");
     const requestList = screen.getByLabelText(`Solicitações em ${customColumn.name}`);
 
-    expect(column).toHaveClass("flex", "h-full", "min-h-0", "flex-col");
+    expect(column).toHaveClass("flex", "max-h-full", "min-h-0", "flex-col");
+    expect(column).not.toHaveClass("h-full");
     expect(requestList).toHaveClass("min-h-0", "flex-1", "overflow-y-auto");
     expect(requestList).not.toHaveClass("max-h-[min(28rem,calc(100dvh-18rem))]");
   });
