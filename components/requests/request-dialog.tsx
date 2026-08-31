@@ -5,6 +5,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CityMultiSelect } from "@/components/cities/city-multi-select";
 import { ToastNotice } from "@/components/ui/site-toast";
 import { RequestTagIcons, RequestTagSelector } from "@/components/requests/request-tags";
+import { AssigneeSelect } from "@/components/requests/assignee-select";
 import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
 import type { City } from "@/features/cities/types";
 import type { RequestInput } from "@/features/requests/schemas";
@@ -101,17 +102,26 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
   const currentColumn = request ? columns.find((column) => column.id === request.column_id) : undefined;
   const pendingColumn = columns.find((column) => column.system_key === "pending");
   const assigneeColumn = columns.find((column) => column.kind === "assignee" && column.assignee_id === formValues.assignedTo);
-  const selectedDestination = assigneeColumn ?? pendingColumn;
-  const keepsCurrentColumn = request && currentColumn && (
-    currentColumn.kind === "system" || formValues.assignedTo === request.assigned_to
-  );
-  const destinationMessage = keepsCurrentColumn
-    ? `Ao salvar, continuará em: ${currentColumn.name}`
-    : request
-      ? `Ao salvar, irá para: ${selectedDestination?.name ?? "Pendente"}`
-      : `Entrará em: ${selectedDestination?.name ?? "Pendente"}`;
+  const hasAssignee = Boolean(formValues.assignedTo);
+  const selectedDestination = hasAssignee ? assigneeColumn ?? pendingColumn : undefined;
+  const keepsCurrentColumn = Boolean(request && currentColumn && (
+    currentColumn.kind === "system" ||
+    currentColumn.kind === "custom" ||
+    formValues.assignedTo === request.assigned_to
+  ));
+  const destinationMessage = !hasAssignee
+    ? "Selecione um responsável para definir o destino."
+    : keepsCurrentColumn
+      ? `Ao salvar, continuará em: ${currentColumn?.name}`
+      : request
+        ? `Ao salvar, irá para: ${selectedDestination?.name ?? "Pendente"}`
+        : `Entrará em: ${selectedDestination?.name ?? "Pendente"}`;
 
   async function submit() {
+    if (!formValues.assignedTo) {
+      setError("Selecione um responsável.");
+      return;
+    }
     if (formValues.cityIds.length === 0) {
       setError("Selecione pelo menos uma cidade.");
       return;
@@ -174,8 +184,8 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
             <div><b>Título</b><p>{request.title}</p></div>
             <div><b>Descrição</b><p className="whitespace-pre-wrap">{request.description || "Sem descrição"}</p></div>
             <div>
-              <b>{request.cities.length === 1 ? "Cidade" : "Cidades"}</b>
-              <p>{request.cities.map((city) => city.name).join(", ")}</p>
+              <b>{request.cities.length <= 1 ? "Cidade" : "Cidades"}</b>
+              <p>{request.cities.length === 0 ? "Não definida" : request.cities.map((city) => city.name).join(", ")}</p>
               {request.cities.filter((city) => !city.active).map((city) => <span key={city.id} aria-label={`${city.name} Desativada`} className="status-badge mt-1 inline-flex">Desativada</span>)}
             </div>
             <div><b>Responsável</b><p>{request.assignee?.full_name ?? "—"}</p></div>
@@ -202,7 +212,10 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
               <span className="label">Cidade</span>
               <CityMultiSelect cities={cities} value={formValues.cityIds} onChange={(cityIds) => updateField("cityIds", cityIds)} disabled={busy} />
             </div>
-            <label className="label">Responsável<select className="field" name="assignedTo" value={formValues.assignedTo} onChange={(event) => updateField("assignedTo", event.target.value)} required><option value="">Selecione</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name}</option>)}</select></label>
+            <div className="grid gap-2">
+              <span className="label">Responsável</span>
+              <AssigneeSelect profiles={profiles} value={formValues.assignedTo} onChange={(assignedTo) => updateField("assignedTo", assignedTo)} disabled={busy} />
+            </div>
             <p className="-mt-2 text-sm text-white/45" aria-live="polite">{destinationMessage}</p>
             <RequestTagSelector value={formValues.tags} onChange={(tags) => updateField("tags", tags)} />
             <label className="label">Link externo<input className="field" name="externalUrl" type="url" placeholder="https://" value={formValues.externalUrl} onChange={(event) => updateField("externalUrl", event.target.value)} /></label>
