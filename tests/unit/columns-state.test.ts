@@ -5,8 +5,8 @@ import type { BoardColumn } from "@/features/columns/types";
 import type { City } from "@/features/cities/types";
 import type { RequestRecord } from "@/features/requests/types";
 
-const santaLuzia: City = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", active: true, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
-const beloHorizonte: City = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", active: true, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+const santaLuzia: City = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Santa Luzia", position: 1024, active: true, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+const beloHorizonte: City = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Belo Horizonte", position: 2048, active: true, created_by: "creator", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
 
 const columns: BoardColumn[] = [
   { id: "assignee-z", name: "Zoe", kind: "assignee", system_key: null, assignee_id: "assignee-z", position: 9, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
