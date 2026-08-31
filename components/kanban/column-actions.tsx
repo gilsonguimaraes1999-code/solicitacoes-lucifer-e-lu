@@ -22,12 +22,14 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !renaming) return;
 
     function closeWhenOutside(event: PointerEvent) {
-      if (event.target instanceof Node && !actionsRef.current?.contains(event.target)) {
-        setMenuOpen(false);
-      }
+      if (busy || !(event.target instanceof Node) || actionsRef.current?.contains(event.target)) return;
+      setMenuOpen(false);
+      setRenaming(false);
+      setName(column.name);
+      setError("");
     }
 
     function closeOnEscape(event: KeyboardEvent) {
@@ -42,7 +44,7 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
       document.removeEventListener("pointerdown", closeWhenOutside);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [menuOpen]);
+  }, [busy, column.name, menuOpen, renaming]);
 
   const canRename = column.kind !== "assignee";
   const canDelete = column.kind === "custom";
@@ -98,11 +100,11 @@ export function ColumnActions({ column, canManageColumns, canMoveLeft = false, c
   }
 
   return <div ref={actionsRef} className="relative" aria-label={`Ações da lista ${column.name}`}>
-    {canRename && renaming ? <form className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-white/10 bg-[#101010] p-3 shadow-2xl" onSubmit={rename}>
+    {canRename && renaming ? <form className="absolute right-0 top-9 z-30 w-60 rounded-lg border border-white/10 bg-[#101010] p-2 shadow-2xl" onSubmit={rename}>
       <label className="sr-only" htmlFor={`column-name-${column.id}`}>Novo nome da lista</label>
-      <input id={`column-name-${column.id}`} className="field" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} minLength={2} maxLength={80} required />
+      <input id={`column-name-${column.id}`} className="field px-2.5 py-2 text-sm" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} minLength={2} maxLength={80} required />
       {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
-      <div className="mt-3 flex justify-end gap-2"><button type="button" className="button secondary px-3 py-2 text-xs" disabled={busy} onClick={() => { setName(column.name); setError(""); setRenaming(false); }}>Cancelar</button><button type="submit" className="button px-3 py-2 text-xs" disabled={busy}>Salvar nome</button></div>
+      <div className="mt-2 flex justify-end gap-1.5"><button type="button" className="button secondary px-2.5 py-1.5 text-xs" disabled={busy} onClick={() => { setName(column.name); setError(""); setRenaming(false); }}>Cancelar</button><button type="submit" className="button px-2.5 py-1.5 text-xs" disabled={busy}>Salvar nome</button></div>
     </form> : null}
     <button ref={triggerRef} type="button" className="column-actions-trigger" aria-label={`Abrir ações da lista ${column.name}`} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button>
     {menuOpen && !renaming && <div className="absolute right-0 top-9 z-20 w-56 rounded-xl border border-white/10 bg-[#101010] p-1.5 shadow-2xl">
