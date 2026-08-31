@@ -270,6 +270,24 @@ describe("UserEditor", () => {
     })));
   });
 
+  it("mantém inputs reais e desenha permissões com marcadores escuros e dourados", () => {
+    render(<UserEditor user={member} onClose={vi.fn()} onSave={vi.fn()} />);
+
+    const checkbox = screen.getByRole("checkbox", { name: "Criar solicitações" });
+    const marker = checkbox.nextElementSibling;
+
+    expect(checkbox.tagName).toBe("INPUT");
+    expect(checkbox).toHaveAttribute("type", "checkbox");
+    expect(checkbox).toHaveClass("sr-only");
+    expect(marker).toHaveAttribute("aria-hidden", "true");
+    expect(marker).toHaveClass("border-white/30", "bg-white/[.03]");
+
+    fireEvent.click(checkbox);
+
+    expect(checkbox).toBeChecked();
+    expect(checkbox.nextElementSibling).toHaveClass("border-[#d4af37]", "bg-[#d4af37]");
+  });
+
   it("mantém status e permissões nativas do owner protegidos", () => {
     render(<UserEditor user={{ ...member, id: "owner-id", role: "owner", approval_status: "approved" }} onClose={vi.fn()} onSave={vi.fn()} onDelete={vi.fn()} />);
 
