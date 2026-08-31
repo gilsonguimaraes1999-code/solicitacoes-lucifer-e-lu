@@ -81,6 +81,20 @@ describe("AddColumn", () => {
     fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
     expect(screen.getByRole("button", { name: "Lista personalizada" })).toBeInTheDocument();
   });
+
+  it("não abre o seletor de cor ao clicar no texto da linha", () => {
+    render(<AddColumn columns={columns} profiles={profiles} canManageColumns onCreate={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Lista personalizada" }));
+    const colorInput = screen.getByLabelText("Cor da lista");
+    const onColorClick = vi.fn();
+    colorInput.addEventListener("click", onColorClick);
+
+    fireEvent.click(screen.getByText("Cor da lista"));
+
+    expect(onColorClick).not.toHaveBeenCalled();
+  });
 });
 
 describe("ColumnActions", () => {
@@ -155,6 +169,19 @@ describe("ColumnActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
     await waitFor(() => expect(onRename).toHaveBeenCalledWith(columns[0].id, "Ana", "#12abef"));
+  });
+
+  it("não abre o seletor de cor ao clicar no texto da linha de edição", () => {
+    const systemColumn: BoardColumn = { ...columns[0], name: "Pendente", kind: "system", assignee_id: null, system_key: "pending" };
+    render(<ColumnActions column={systemColumn} canManageColumns initialRenaming onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    const colorInput = screen.getByLabelText("Cor da lista");
+    const onColorClick = vi.fn();
+    colorInput.addEventListener("click", onColorClick);
+
+    fireEvent.click(screen.getByText("Cor"));
+
+    expect(onColorClick).not.toHaveBeenCalled();
   });
 
   it("fecha o menu quando o usuário clica fora dele", () => {
