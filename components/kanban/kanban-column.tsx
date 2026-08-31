@@ -23,7 +23,7 @@ export function KanbanColumn({ column, requests, canMove, canManageColumns, canR
     : column.kind === "custom"
       ? "border border-[#d4af37]/30 bg-[#d4af37]/12 text-[#f4c56e]"
       : systemColors[column.system_key];
-  const canRenameFromTitle = canManageColumns && column.kind === "custom";
+  const canRenameFromTitle = canManageColumns && column.kind !== "assignee";
   const handleHeaderPointerDown: PointerEventHandler<HTMLElement> | undefined = canReorderColumn && sortable.listeners?.onPointerDown
     ? (event) => sortable.listeners?.onPointerDown?.(event)
     : undefined;
