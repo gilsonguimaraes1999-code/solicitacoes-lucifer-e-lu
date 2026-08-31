@@ -463,6 +463,21 @@ describe("CitiesPanel", () => {
     expect(screen.getByRole("button", { name: `Mover ${curitiba.name} para baixo` })).toBeDisabled();
   });
 
+  it("agrupa as setas de ordenação lado a lado em botões pequenos sem a caixa global", () => {
+    const recifeAtiva = { ...inactiveCity, active: true };
+    render(<CitiesPanel initialCities={[curitiba, recifeAtiva, activeCity]} />);
+
+    const moveUp = screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para cima` });
+    const moveDown = screen.getByRole("button", { name: `Mover ${recifeAtiva.name} para baixo` });
+
+    expect(moveUp.parentElement).toBe(moveDown.parentElement);
+    expect(moveUp.parentElement).toHaveClass("flex-row");
+    expect(moveUp).toHaveClass("h-7", "w-7");
+    expect(moveDown).toHaveClass("h-7", "w-7");
+    expect(moveUp).not.toHaveClass("icon-button");
+    expect(moveDown).not.toHaveClass("icon-button");
+  });
+
   it("restaura o snapshot exato e mostra a mensagem de falha ao reordenar", async () => {
     const user = userEvent.setup();
     const recifeAtiva = { ...inactiveCity, active: true };
