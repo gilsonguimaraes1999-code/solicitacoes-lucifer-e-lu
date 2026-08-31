@@ -40,6 +40,8 @@ import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { RequestCard } from "@/components/kanban/request-card";
 
 const customColumn: BoardColumn = { id: "column-priorities", name: "Prioridades", kind: "custom", system_key: null, assignee_id: null, position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+const systemColumn: BoardColumn = { ...customColumn, id: "column-pending", name: "Pendente", kind: "system", system_key: "pending" };
+const assigneeColumn: BoardColumn = { ...customColumn, id: "column-lucifer", name: "Lucifer", kind: "assignee", system_key: null, assignee_id: "profile-1" };
 const request: RequestRecord = { id: "request-1", title: "Pedido", description: null, cities: [], assigned_to: "profile-1", external_url: null, tags: [], status: null, column_id: customColumn.id, position: 1024, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z", assignee: { id: "profile-1", full_name: "Lucifer" } };
 
 beforeEach(() => {
@@ -97,6 +99,21 @@ describe("Kanban DnD components", () => {
 
     fireEvent.pointerDown(screen.getByRole("button", { name: `Abrir ações da lista ${customColumn.name}` }));
     expect(mocks.dragPointerDown).not.toHaveBeenCalled();
+  });
+
+  it("permite editar o título de uma coluna de sistema", () => {
+    render(<KanbanColumn column={systemColumn} requests={[]} canMove canManageColumns canReorderColumn onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Renomear lista Pendente" }));
+
+    expect(screen.getByLabelText("Novo nome da lista")).toHaveValue("Pendente");
+  });
+
+  it("mantém o título de responsável vinculado ao cadastro", () => {
+    render(<KanbanColumn column={assigneeColumn} requests={[]} canMove canManageColumns canReorderColumn onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "Lucifer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Renomear lista Lucifer" })).not.toBeInTheDocument();
   });
 
   it("preserva Escape para a acessibilidade do menu sem ativar o teclado do drag", () => {
