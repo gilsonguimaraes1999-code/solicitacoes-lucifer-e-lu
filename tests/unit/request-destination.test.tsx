@@ -55,7 +55,12 @@ const baseProps = {
 
 function fillRequiredFields() {
   fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
-  fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+  selectAssignee(profiles[0]);
+}
+
+function selectAssignee(profile: Profile) {
+  fireEvent.click(screen.getByRole("button", { name: "Selecionar responsável" }));
+  fireEvent.click(screen.getByRole("option", { name: profile.full_name }));
 }
 
 function selectCity(city: City) {
@@ -69,13 +74,38 @@ afterEach(() => {
 });
 
 describe("RequestDialog destination", () => {
+  it("usa um menu customizado de escolha única com somente responsáveis aprovados", () => {
+    const pendingProfile: Profile = {
+      ...profiles[0],
+      id: "44444444-4444-4444-8444-444444444444",
+      full_name: "Usuário pendente",
+      approval_status: "pending",
+    };
+    render(<RequestDialog {...baseProps} profiles={[...profiles, pendingProfile]} request={null} />);
+
+    expect(screen.queryByRole("combobox", { name: "Responsável" })).not.toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Selecionar responsável" });
+    fireEvent.click(trigger);
+
+    const menu = screen.getByRole("listbox", { name: "Responsáveis disponíveis" });
+    expect(within(menu).getByRole("option", { name: "Lucifer" })).toBeInTheDocument();
+    expect(within(menu).getByRole("option", { name: "Bruno" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("option", { name: "Usuário pendente" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole("option", { name: "Bruno" }));
+
+    expect(screen.queryByRole("listbox", { name: "Responsáveis disponíveis" })).not.toBeInTheDocument();
+    expect(trigger).toHaveTextContent("Bruno");
+  });
+
   it("mostra a coluna vinculada e volta para Pendente ao trocar o responsável", () => {
     render(<RequestDialog {...baseProps} request={null} />);
 
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    selectAssignee(profiles[0]);
     expect(screen.getByText("Entrará em: Atendimento Lucifer")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[1].id } });
+    selectAssignee(profiles[1]);
     expect(screen.getByText("Entrará em: Pendente")).toBeInTheDocument();
   });
 
@@ -84,7 +114,7 @@ describe("RequestDialog destination", () => {
     render(<RequestDialog {...baseProps} request={fixedRequest} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[1].id } });
+    selectAssignee(profiles[1]);
 
     expect(screen.getByText("Ao salvar, continuará em: Em progresso")).toBeInTheDocument();
   });
@@ -102,10 +132,46 @@ describe("RequestDialog destination", () => {
     expect(screen.getByText("Ao salvar, continuará em: Atendimento Lucifer")).toBeInTheDocument();
   });
 
+  it("mantém a lista personalizada ao trocar o responsável", () => {
+    const customColumn: BoardColumn = {
+      id: "column-prioridades",
+      name: "Prioridades",
+      kind: "custom",
+      system_key: null,
+      assignee_id: null,
+      position: 5120,
+      created_by: "owner",
+      created_at: "2026-08-29T00:00:00Z",
+      updated_at: "2026-08-29T00:00:00Z",
+    };
+    render(<RequestDialog {...baseProps} columns={[...columns, customColumn]} request={{ ...request, column_id: customColumn.id }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    selectAssignee(profiles[1]);
+
+    expect(screen.getByText("Ao salvar, continuará em: Prioridades")).toBeInTheDocument();
+  });
+
+  it("exige responsável antes de validar cidade e tags e preserva os campos", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={null} onSave={onSave} />);
+    fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
+    selectCity(cities[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(await screen.findByText("Selecione um responsável.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Título")).toHaveValue("Nova demanda");
+    expect(screen.getByRole("button", { name: "Selecionar cidades" })).toHaveTextContent(cities[0].name);
+    expect(screen.getByRole("button", { name: "Tag Loja" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("preserva a escolha manual do responsável diante de atualização remota posterior", () => {
     const { rerender } = render(<RequestDialog {...baseProps} request={request} />);
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[1].id } });
+    selectAssignee(profiles[1]);
 
     const remoteRequest = {
       ...request,
@@ -114,7 +180,7 @@ describe("RequestDialog destination", () => {
     };
     rerender(<RequestDialog {...baseProps} request={remoteRequest} />);
 
-    expect(screen.getByLabelText("Responsável")).toHaveValue(profiles[1].id);
+    expect(screen.getByRole("button", { name: "Selecionar responsável" })).toHaveTextContent(profiles[1].full_name);
   });
 });
 
@@ -229,6 +295,13 @@ describe("RequestDialog cities", () => {
 
     expect(screen.getByText("Cidades", { selector: "b" })).toBeInTheDocument();
     expect(screen.getByText("Santa Luzia, Belo Horizonte")).toBeInTheDocument();
+  });
+
+  it("identifica nos detalhes uma solicitação antiga ainda sem cidade", () => {
+    render(<RequestDialog {...baseProps} request={{ ...request, cities: [] }} />);
+
+    expect(screen.getByText("Cidade", { selector: "b" })).toBeInTheDocument();
+    expect(screen.getByText("Não definida")).toBeInTheDocument();
   });
 
   it("preserva o formulário aberto e preenchido quando a API falha", async () => {

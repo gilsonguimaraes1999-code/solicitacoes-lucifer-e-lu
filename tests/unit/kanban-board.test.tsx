@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   channel: vi.fn(),
   removeChannel: vi.fn(),
   createBoardColumn: vi.fn(),
+  getBoardColumn: vi.fn(),
   renameBoardColumn: vi.fn(),
   reorderBoardColumn: vi.fn(),
   deleteBoardColumn: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("@/lib/supabase/browser", () => ({
 
 vi.mock("@/features/columns/api", () => ({
   createBoardColumn: mocks.createBoardColumn,
+  getBoardColumn: mocks.getBoardColumn,
   renameBoardColumn: mocks.renameBoardColumn,
   reorderBoardColumn: mocks.reorderBoardColumn,
   deleteBoardColumn: mocks.deleteBoardColumn,
@@ -66,6 +68,7 @@ function emitColumnChange(eventType: "INSERT" | "UPDATE" | "DELETE", column: Boa
 
 beforeEach(() => {
   mocks.createBoardColumn.mockReset();
+  mocks.getBoardColumn.mockReset();
   mocks.renameBoardColumn.mockReset();
   mocks.reorderBoardColumn.mockReset();
   mocks.deleteBoardColumn.mockReset();
@@ -123,11 +126,35 @@ describe("KanbanBoard", () => {
     render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[{ id: profileId, full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" }]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Lista de responsável" }));
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profileId } });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar lista" }));
 
-    await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledWith("Bruno", profileId, 5120));
+    await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledWith({ kind: "assignee", name: "Bruno", assigneeId: profileId }, 5120));
     expect(await screen.findByText("Lista adicionada.")).toBeInTheDocument();
+  });
+
+  it("despacha a criação de lista personalizada pelo CreateColumnInput", async () => {
+    const customColumn: BoardColumn = { id: "column-priorities", name: "Prioridades", kind: "custom", system_key: null, assignee_id: null, position: 5120, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+    mocks.createBoardColumn.mockResolvedValue(customColumn);
+    render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Lista personalizada" }));
+    fireEvent.change(screen.getByLabelText("Nome da lista"), { target: { value: "Prioridades" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar lista" }));
+
+    await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledWith({ kind: "custom", name: "Prioridades", assigneeId: null }, 5120));
+    expect(await screen.findByRole("heading", { level: 2, name: "Prioridades" })).toBeInTheDocument();
+  });
+
+  it("abre a renomeação ao clicar no nome de uma lista personalizada", () => {
+    const customColumn: BoardColumn = { id: "column-priorities", name: "Prioridades", kind: "custom", system_key: null, assignee_id: null, position: 5120, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
+    render(<KanbanBoard initialRequests={requests} initialColumns={[...columns, customColumn]} cities={cities} profiles={[]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Renomear lista Prioridades" }));
+
+    expect(screen.getByLabelText("Novo nome da lista")).toHaveValue("Prioridades");
   });
 
   it("move uma coluna personalizada por uma posição visível, atravessando as colunas fixas", async () => {
@@ -187,6 +214,7 @@ describe("KanbanBoard", () => {
     render(<KanbanBoard initialRequests={requests} initialColumns={columns} cities={cities} profiles={[{ id: brunoProfileId, full_name: "Bruno", role: "member", approval_status: "approved", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" }]} currentUserId="owner" permissions={{ ...permissions, canManageColumns: true }} />);
 
     fireEvent.click(screen.getByRole("button", { name: /adicionar outra lista/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Lista de responsável" }));
     fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: brunoProfileId } });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar lista" }));
     await waitFor(() => expect(mocks.createBoardColumn).toHaveBeenCalledOnce());

@@ -14,6 +14,7 @@ const columns: BoardColumn[] = [
   { id: "pending", name: "Pendente", kind: "system", system_key: "pending", assignee_id: null, position: 1, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
   { id: "assignee-a", name: "Ana", kind: "assignee", system_key: null, assignee_id: "assignee-a", position: 9, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
   { id: "progress", name: "Em progresso", kind: "system", system_key: "in_progress", assignee_id: null, position: 2, created_by: null, created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
+  { id: "custom-priority", name: "Prioridades", kind: "custom", system_key: null, assignee_id: null, position: 0, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" },
 ];
 
 const requests: RequestRecord[] = [
@@ -24,7 +25,7 @@ const requests: RequestRecord[] = [
 describe("columnsReducer", () => {
   it("reconcilia snapshot e eventos repetidos por id em ordem determinística", () => {
     const snapshot = columnsReducer([], { type: "snapshot", columns: [...columns, columns[0]] });
-    expect(snapshot.map((column) => column.id)).toEqual(["pending", "progress", "completed", "assignee-a", "assignee-z"]);
+    expect(snapshot.map((column) => column.id)).toEqual(["custom-priority", "pending", "progress", "completed", "assignee-a", "assignee-z"]);
 
     const once = columnsReducer(snapshot, { type: "insert", column: columns[3] });
     expect(columnsReducer(once, { type: "update", column: columns[3] })).toEqual(once);
@@ -33,34 +34,26 @@ describe("columnsReducer", () => {
     expect(columnsReducer(once, { type: "snapshot", columns: [columns[2]] })).toEqual([columns[2]]);
   });
 
-  it("intercala responsáveis pela posição sem alterar a ordem relativa dos status fixos", () => {
+  it("ordena todos os tipos exclusivamente pela posição", () => {
     const betweenPendingAndProgress = { ...columns[3], position: 1.5 };
     const beforePending = { ...columns[0], position: 0.5 };
+    const afterCompleted = { ...columns[5], position: 4 };
 
-    expect(columnsReducer([], { type: "snapshot", columns: [columns[1], columns[2], columns[4], betweenPendingAndProgress, beforePending] }).map((column) => column.id)).toEqual([
+    expect(columnsReducer([], { type: "snapshot", columns: [columns[1], columns[2], columns[4], betweenPendingAndProgress, beforePending, afterCompleted] }).map((column) => column.id)).toEqual([
       "assignee-z",
       "pending",
       "assignee-a",
       "progress",
       "completed",
+      "custom-priority",
     ]);
   });
 
-  it("mantém chaves de sistema desconhecidas depois das chaves válidas", () => {
-    const unknownSystemColumn = {
-      ...columns[0],
-      id: "unknown-system",
-      kind: "system",
-      system_key: null,
-      position: 0,
-    } as unknown as BoardColumn;
+  it("desempata posições iguais pelo id, sem privilegiar colunas de sistema", () => {
+    const custom = { ...columns[5], id: "a-custom", position: 3 };
+    const system = { ...columns[1], id: "z-system", position: 3 };
 
-    expect(columnsReducer([], { type: "snapshot", columns: [unknownSystemColumn, columns[1], columns[2], columns[4]] }).map((column) => column.id)).toEqual([
-      "pending",
-      "progress",
-      "completed",
-      "unknown-system",
-    ]);
+    expect(columnsReducer([], { type: "snapshot", columns: [system, custom] }).map((column) => column.id)).toEqual(["a-custom", "z-system"]);
   });
 });
 

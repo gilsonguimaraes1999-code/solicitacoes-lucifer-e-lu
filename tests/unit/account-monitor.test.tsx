@@ -67,12 +67,21 @@ describe("AccountMonitor", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
-  it("leva a conta aprovada diretamente ao painel", () => {
+  it("leva a conta aprovada da tela pendente diretamente ao painel", () => {
     render(<AccountMonitor userId="user-1" />);
 
     act(() => mocks.profileUpdate?.({ new: { approval_status: "approved" } }));
 
     expect(mocks.replace).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("mantém a conta aprovada na página administrativa de cidades", () => {
+    mocks.pathname = "/admin/cities";
+    render(<AccountMonitor userId="user-1" />);
+
+    act(() => mocks.profileUpdate?.({ new: { approval_status: "approved" } }));
+
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 
   it("atualiza o layout quando as permissões da conta mudam", () => {

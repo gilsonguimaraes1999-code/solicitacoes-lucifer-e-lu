@@ -98,4 +98,24 @@ describe("KanbanColumn", () => {
     rerender(<KanbanColumn column={columns[1]} requests={[requests[1]]} canMove={false} canManageColumns={false} onOpen={onOpen} onRename={vi.fn()} onDelete={vi.fn()} />);
     expect(screen.getByText("Cidades: Santa Luzia, Belo Horizonte")).toBeInTheDocument();
   });
+
+  it("identifica solicitações antigas que ainda precisam receber uma cidade", () => {
+    render(<KanbanColumn column={columns[3]} requests={[{ ...requests[0], cities: [] }]} canMove={false} canManageColumns={false} onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.getByText("Cidade: Não definida")).toBeInTheDocument();
+  });
+
+  it("mantém todos os cartões em uma área rolável acessível abaixo do cabeçalho", () => {
+    const columnRequests = Array.from({ length: 6 }, (_, index) => ({
+      ...requests[0],
+      id: `request-scroll-${index}`,
+      title: `Solicitação ${index + 1}`,
+    }));
+    render(<KanbanColumn column={columns[3]} requests={columnRequests} canMove canManageColumns={false} onOpen={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    const cardList = screen.getByLabelText("Solicitações em Lucifer");
+    expect(cardList).toHaveClass("overflow-y-auto", "overscroll-contain", "city-options-scroll");
+    expect(cardList).toHaveClass("max-h-[min(28rem,calc(100dvh-18rem))]");
+    for (const request of columnRequests) expect(screen.getByRole("button", { name: `Abrir ${request.title}` })).toBeInTheDocument();
+  });
 });

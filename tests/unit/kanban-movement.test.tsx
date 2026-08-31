@@ -14,13 +14,22 @@ const mocks = vi.hoisted(() => ({
   moveRequest: vi.fn(),
   getRequest: vi.fn(),
   deleteRequest: vi.fn(),
+  createBoardColumn: vi.fn(),
+  getBoardColumn: vi.fn(),
+  renameBoardColumn: vi.fn(),
+  reorderBoardColumn: vi.fn(),
+  deleteBoardColumn: vi.fn(),
+  closestCenter: vi.fn(() => []),
+  collisionDetection: undefined as unknown as (args: Record<string, unknown>) => unknown,
+  sortableContexts: [] as Array<{ items: string[]; strategy: unknown }>,
   dragEnd: undefined as unknown as (event: DragEndEvent) => Promise<void>,
-  dragStart: undefined as unknown as (event: { active: { id: string } }) => void,
+  dragStart: undefined as unknown as (event: { active: { id: string; data?: { current?: Record<string, unknown> } } }) => void,
   dragCancel: undefined as unknown as () => void,
   sensors: [] as Array<{ options?: { activationConstraint?: { distance?: number } } }>,
   requestChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => Promise<void>,
   cityChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => void,
   requestCityChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => Promise<void>,
+  columnChange: undefined as unknown as (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; old: Record<string, unknown>; new: Record<string, unknown> }) => void,
   accessibility: undefined as unknown as { announcements?: Announcements; screenReaderInstructions?: ScreenReaderInstructions },
 }));
 
@@ -28,12 +37,14 @@ vi.mock("@dnd-kit/core", async (importOriginal) => {
   const original = await importOriginal<typeof import("@dnd-kit/core")>();
   return {
     ...original,
-    DndContext: ({ children, onDragStart, onDragCancel, onDragEnd, accessibility, sensors }: { children: ReactNode; onDragStart?: (event: { active: { id: string } }) => void; onDragCancel?: () => void; onDragEnd: (event: DragEndEvent) => Promise<void>; accessibility?: { announcements?: Announcements; screenReaderInstructions?: ScreenReaderInstructions }; sensors?: Array<{ options?: { activationConstraint?: { distance?: number } } }> }) => {
+    closestCenter: mocks.closestCenter,
+    DndContext: ({ children, onDragStart, onDragCancel, onDragEnd, accessibility, sensors, collisionDetection }: { children: ReactNode; onDragStart?: (event: { active: { id: string; data?: { current?: Record<string, unknown> } } }) => void; onDragCancel?: () => void; onDragEnd: (event: DragEndEvent) => Promise<void>; accessibility?: { announcements?: Announcements; screenReaderInstructions?: ScreenReaderInstructions }; sensors?: Array<{ options?: { activationConstraint?: { distance?: number } } }>; collisionDetection: (args: Record<string, unknown>) => unknown }) => {
       mocks.dragEnd = onDragEnd;
       mocks.dragStart = onDragStart ?? (() => undefined);
       mocks.dragCancel = onDragCancel ?? (() => undefined);
       mocks.sensors = sensors ?? [];
       mocks.accessibility = accessibility ?? {};
+      mocks.collisionDetection = collisionDetection;
       return <>{children}</>;
     },
     DragOverlay: ({ children }: { children: ReactNode }) => children ? <div data-testid="drag-overlay">{children}</div> : null,
@@ -74,6 +85,25 @@ vi.mock("@/features/requests/api", () => ({
   deleteRequest: mocks.deleteRequest,
 }));
 
+vi.mock("@dnd-kit/sortable", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@dnd-kit/sortable")>();
+  return {
+    ...original,
+    SortableContext: ({ children, items, strategy }: { children: ReactNode; items: Array<string | { id: string }>; strategy: unknown }) => {
+      mocks.sortableContexts.push({ items: items.map((item) => typeof item === "string" ? item : item.id), strategy });
+      return <>{children}</>;
+    },
+  };
+});
+
+vi.mock("@/features/columns/api", () => ({
+  createBoardColumn: mocks.createBoardColumn,
+  getBoardColumn: mocks.getBoardColumn,
+  renameBoardColumn: mocks.renameBoardColumn,
+  reorderBoardColumn: mocks.reorderBoardColumn,
+  deleteBoardColumn: mocks.deleteBoardColumn,
+}));
+
 import { KanbanBoard } from "@/components/kanban/kanban-board";
 
 const profiles: Profile[] = [
@@ -112,6 +142,7 @@ const sourceRequest: RequestRecord = {
 
 const pendingFirst: RequestRecord = { ...sourceRequest, id: "request-first", title: "Primeiro pendente", column_id: "column-pending", status: "pending", position: 1024 };
 const pendingLast: RequestRecord = { ...sourceRequest, id: "request-last", title: "Último pendente", column_id: "column-pending", status: "pending", position: 3072 };
+const customColumn: BoardColumn = { id: "column-priorities", name: "Prioridades", kind: "custom", system_key: null, assignee_id: null, position: 4096, created_by: "owner", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T00:00:00Z" };
 
 const basePermissions: EffectivePermissions = { canCreate: false, canEdit: false, canMove: true, canDelete: false, canManageColumns: false, canManageCities: false };
 
@@ -119,15 +150,37 @@ function boardRequests(columnName: string) {
   return within(screen.getByRole("region", { name: `Lista ${columnName}` }));
 }
 
+function boardColumnNames() {
+  return screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+}
+
 function drag(activeId: string, overId: string) {
+  const overRequest = [sourceRequest, pendingFirst, pendingLast].find((request) => request.id === overId);
   act(() => {
-    void mocks.dragEnd({ active: { id: activeId }, over: { id: overId } } as DragEndEvent);
+    void mocks.dragEnd({
+      active: { id: activeId, data: { current: { type: "request", columnId: sourceRequest.column_id } } },
+      over: { id: overId, data: { current: overRequest ? { type: "request", columnId: overRequest.column_id } : { type: "column" } } },
+    } as unknown as DragEndEvent);
+  });
+}
+
+function dragColumn(activeId: string, overId: string) {
+  act(() => {
+    void mocks.dragEnd({
+      active: { id: activeId, data: { current: { type: "column" } } },
+      over: { id: overId, data: { current: { type: "column" } } },
+    } as unknown as DragEndEvent);
   });
 }
 
 function selectFirstCity() {
   fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
   fireEvent.click(screen.getByRole("option", { name: cities[0].name }));
+}
+
+function selectAssignee(profile: Profile) {
+  fireEvent.click(screen.getByRole("button", { name: "Selecionar responsável" }));
+  fireEvent.click(screen.getByRole("option", { name: profile.full_name }));
 }
 
 function deferred<T>() {
@@ -180,6 +233,13 @@ beforeEach(() => {
   mocks.moveRequest.mockReset();
   mocks.getRequest.mockReset();
   mocks.deleteRequest.mockReset();
+  mocks.createBoardColumn.mockReset();
+  mocks.getBoardColumn.mockReset();
+  mocks.renameBoardColumn.mockReset();
+  mocks.reorderBoardColumn.mockReset();
+  mocks.deleteBoardColumn.mockReset();
+  mocks.closestCenter.mockClear();
+  mocks.sortableContexts = [];
   mocks.channel.mockReset();
   mocks.removeChannel.mockReset();
   mocks.channel.mockImplementation((name: string) => {
@@ -188,6 +248,7 @@ beforeEach(() => {
         if (name === "requests-board") mocks.requestChange = callback;
         if (name === "cities-board") mocks.cityChange = callback;
         if (name === "request-cities-board") mocks.requestCityChange = callback;
+        if (name === "board-columns") mocks.columnChange = callback as typeof mocks.columnChange;
         return channel;
       }),
       subscribe: vi.fn(() => channel),
@@ -339,7 +400,7 @@ describe("KanbanBoard city realtime", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: created.title } });
     selectFirstCity();
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    selectAssignee(profiles[0]);
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledOnce());
@@ -391,6 +452,158 @@ describe("KanbanBoard city realtime", () => {
 });
 
 describe("KanbanBoard movement", () => {
+  it("arrasta uma coluna personalizada para antes das colunas de sistema", async () => {
+    mocks.reorderBoardColumn.mockResolvedValue({ ...customColumn, position: 512 });
+    render(<KanbanBoard initialRequests={[]} initialColumns={[...columns.slice(0, 3), customColumn]} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    dragColumn(customColumn.id, columns[0].id);
+
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith(customColumn.id, 512));
+    expect(boardColumnNames()).toEqual(["Prioridades", "Pendente", "Em progresso", "Concluído"]);
+  });
+
+  it("arrasta uma coluna de sistema para depois de uma personalizada", async () => {
+    mocks.reorderBoardColumn.mockResolvedValue({ ...columns[0], position: 5120 });
+    render(<KanbanBoard initialRequests={[]} initialColumns={[...columns.slice(0, 3), customColumn]} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    dragColumn(columns[0].id, customColumn.id);
+
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith(columns[0].id, 5120));
+    expect(boardColumnNames()).toEqual(["Em progresso", "Concluído", "Prioridades", "Pendente"]);
+  });
+
+  it("calcula a posição exata entre a coluna alvo e sua próxima vizinha", async () => {
+    mocks.reorderBoardColumn.mockResolvedValue({ ...columns[0], position: 2560 });
+    render(<KanbanBoard initialRequests={[]} initialColumns={[...columns.slice(0, 3), customColumn]} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    dragColumn(columns[0].id, columns[1].id);
+
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith(columns[0].id, 2560));
+    expect(boardColumnNames()).toEqual(["Em progresso", "Pendente", "Concluído", "Prioridades"]);
+  });
+
+  it("restaura a ordem inteira quando a reordenação de coluna falha", async () => {
+    const reorder = deferred<BoardColumn>();
+    mocks.reorderBoardColumn.mockReturnValue(reorder.promise);
+    render(<KanbanBoard initialRequests={[]} initialColumns={[...columns.slice(0, 3), customColumn]} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    dragColumn(customColumn.id, columns[0].id);
+    await waitFor(() => expect(boardColumnNames()).toEqual(["Prioridades", "Pendente", "Em progresso", "Concluído"]));
+    await act(async () => {
+      reorder.reject(new Error("offline"));
+      await reorder.promise.catch(() => undefined);
+    });
+
+    expect(boardColumnNames()).toEqual(["Pendente", "Em progresso", "Concluído", "Prioridades"]);
+    expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível reordenar a lista. A ordem anterior foi restaurada.");
+  });
+
+  it("serializa reordenações da mesma coluna e preserva a última intenção contra Realtime e respostas invertidos", async () => {
+    const firstResponse = deferred<BoardColumn>();
+    const latestResponse = deferred<BoardColumn>();
+    const firstCanonical = { ...customColumn, position: 512, updated_at: "2026-08-30T01:00:00Z" };
+    const latestCanonical = { ...customColumn, position: 4096, updated_at: "2026-08-30T01:00:01Z" };
+    mocks.reorderBoardColumn
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(latestResponse.promise);
+    render(<KanbanBoard initialRequests={[]} initialColumns={[...columns.slice(0, 3), customColumn]} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    dragColumn(customColumn.id, columns[0].id);
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith(customColumn.id, 512));
+    dragColumn(customColumn.id, columns[2].id);
+
+    expect(boardColumnNames()).toEqual(["Pendente", "Em progresso", "Concluído", "Prioridades"]);
+    expect(mocks.reorderBoardColumn).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      latestResponse.resolve(latestCanonical);
+      mocks.columnChange({ eventType: "UPDATE", old: {}, new: latestCanonical as unknown as Record<string, unknown> });
+      mocks.columnChange({ eventType: "UPDATE", old: {}, new: firstCanonical as unknown as Record<string, unknown> });
+      firstResponse.resolve(firstCanonical);
+      await firstResponse.promise;
+    });
+
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledTimes(2));
+    await act(async () => { await latestResponse.promise; });
+
+    expect(mocks.reorderBoardColumn).toHaveBeenNthCalledWith(2, customColumn.id, 4096);
+    expect(boardColumnNames()).toEqual(["Pendente", "Em progresso", "Concluído", "Prioridades"]);
+
+    act(() => {
+      mocks.columnChange({ eventType: "UPDATE", old: {}, new: firstCanonical as unknown as Record<string, unknown> });
+    });
+    expect(boardColumnNames()).toEqual(["Pendente", "Em progresso", "Concluído", "Prioridades"]);
+  });
+
+  it("reconcilia a atualização remota posterior ao commit local mesmo quando ela chega antes da resposta HTTP", async () => {
+    const localResponse = deferred<BoardColumn>();
+    const localCanonical = { ...customColumn, position: 512, updated_at: "2026-08-30T02:00:00Z" };
+    const remoteCanonical = { ...customColumn, position: 2560, updated_at: "2026-08-30T02:00:01Z" };
+    mocks.reorderBoardColumn.mockReturnValue(localResponse.promise);
+    mocks.getBoardColumn.mockResolvedValue(remoteCanonical);
+    render(<KanbanBoard initialRequests={[]} initialColumns={[...columns.slice(0, 3), customColumn]} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    dragColumn(customColumn.id, columns[0].id);
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledWith(customColumn.id, 512));
+    act(() => {
+      mocks.columnChange({ eventType: "UPDATE", old: {}, new: remoteCanonical as unknown as Record<string, unknown> });
+    });
+    await act(async () => {
+      localResponse.resolve(localCanonical);
+      await localResponse.promise;
+    });
+
+    await waitFor(() => expect(mocks.getBoardColumn).toHaveBeenCalledWith(customColumn.id));
+    expect(boardColumnNames()).toEqual(["Pendente", "Em progresso", "Prioridades", "Concluído"]);
+  });
+
+  it("não confirma a intenção enfileirada por evento coincidente recebido antes de sua RPC começar", async () => {
+    const firstResponse = deferred<BoardColumn>();
+    const queuedResponse = deferred<BoardColumn>();
+    const coincidentBeforeStart = { ...customColumn, position: 4096, updated_at: "2026-08-30T03:00:00Z" };
+    const firstCanonical = { ...customColumn, position: 512, updated_at: "2026-08-30T03:00:01Z" };
+    mocks.reorderBoardColumn
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(queuedResponse.promise);
+    mocks.getBoardColumn.mockResolvedValue(firstCanonical);
+    render(<KanbanBoard initialRequests={[]} initialColumns={[...columns.slice(0, 3), customColumn]} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    dragColumn(customColumn.id, columns[0].id);
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledTimes(1));
+    dragColumn(customColumn.id, columns[2].id);
+    act(() => {
+      mocks.columnChange({ eventType: "UPDATE", old: {}, new: coincidentBeforeStart as unknown as Record<string, unknown> });
+    });
+    await act(async () => {
+      firstResponse.resolve(firstCanonical);
+      await firstResponse.promise;
+    });
+    await waitFor(() => expect(mocks.reorderBoardColumn).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      queuedResponse.reject(new Error("offline"));
+      await queuedResponse.promise.catch(() => undefined);
+    });
+
+    await waitFor(() => expect(mocks.getBoardColumn).toHaveBeenCalledWith(customColumn.id));
+    expect(boardColumnNames()).toEqual(["Prioridades", "Pendente", "Em progresso", "Concluído"]);
+    expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível reordenar a lista. A ordem anterior foi restaurada.");
+    expect(screen.queryByText("Lista reordenada.")).not.toBeInTheDocument();
+  });
+
+  it("não trata um cartão como coluna mesmo quando o alvo é uma coluna", () => {
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    act(() => {
+      void mocks.dragEnd({
+        active: { id: columns[3].id, data: { current: { type: "request", columnId: columns[3].id } } },
+        over: { id: columns[0].id, data: { current: { type: "column" } } },
+      } as unknown as DragEndEvent);
+    });
+
+    expect(mocks.reorderBoardColumn).not.toHaveBeenCalled();
+    expect(mocks.moveRequest).not.toHaveBeenCalled();
+  });
+
   it("move otimisticamente para uma coluna vazia e restaura o cartão inteiro quando a RPC falha", async () => {
     let rejectMove: (error: Error) => void = () => undefined;
     mocks.moveRequest.mockImplementation(() => new Promise<RequestRecord>((_, reject) => { rejectMove = reject; }));
@@ -758,8 +971,8 @@ describe("KanbanBoard movement", () => {
 
     act(() => {
       void mocks.dragEnd({
-        active: { id: moving.id, rect: { current: { translated: { top: 200 } } } },
-        over: { id: target.id, rect: { top: 100, height: 50 } },
+        active: { id: moving.id, data: { current: { type: "request", columnId: moving.column_id } }, rect: { current: { translated: { top: 200 } } } },
+        over: { id: target.id, data: { current: { type: "request", columnId: target.column_id } }, rect: { top: 100, height: 50 } },
       } as unknown as DragEndEvent);
     });
 
@@ -774,8 +987,8 @@ describe("KanbanBoard movement", () => {
 
     act(() => {
       void mocks.dragEnd({
-        active: { id: moving.id, rect: { current: { translated: { top: 110, height: 40 } } } },
-        over: { id: target.id, rect: { top: 100, height: 50 } },
+        active: { id: moving.id, data: { current: { type: "request", columnId: moving.column_id } }, rect: { current: { translated: { top: 110, height: 40 } } } },
+        over: { id: target.id, data: { current: { type: "request", columnId: target.column_id } }, rect: { top: 100, height: 50 } },
       } as unknown as DragEndEvent);
     });
 
@@ -824,7 +1037,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Nova demanda" } });
     selectFirstCity();
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    selectAssignee(profiles[0]);
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -847,7 +1060,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: created.title } });
     selectFirstCity();
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    selectAssignee(profiles[0]);
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -863,7 +1076,7 @@ describe("KanbanBoard save routing", () => {
 
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[1].id } });
+    selectAssignee(profiles[1]);
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
     await waitFor(() => expect(mocks.updateRequest).toHaveBeenCalled());
@@ -880,7 +1093,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.click(boardRequests("Lucifer").getByRole("button", { name: sourceRequest.title }));
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
     await emitRequestUpdate(sourceRequest.id);
-    await waitFor(() => expect(screen.getByLabelText("Responsável")).toHaveValue(profiles[1].id));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Selecionar responsável" })).toHaveTextContent(profiles[1].full_name));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Título atualizado" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -910,7 +1123,7 @@ describe("KanbanBoard save routing", () => {
     expect(screen.getByLabelText("Descrição")).toHaveValue("Descrição remota");
     fireEvent.click(screen.getByRole("button", { name: "Selecionar cidades" }));
     expect(screen.getByRole("option", { name: cities[1].name })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByLabelText("Responsável")).toHaveValue(profiles[1].id);
+    expect(screen.getByRole("button", { name: "Selecionar responsável" })).toHaveTextContent(profiles[1].full_name);
     expect(screen.getByLabelText("Link externo")).toHaveValue("https://example.com/remoto");
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -936,7 +1149,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Versão RPC" } });
     selectFirstCity();
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    selectAssignee(profiles[0]);
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledOnce());
@@ -963,7 +1176,7 @@ describe("KanbanBoard save routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
     fireEvent.change(screen.getByLabelText("Título"), { target: { value: "Resposta atrasada" } });
     selectFirstCity();
-    fireEvent.change(screen.getByLabelText("Responsável"), { target: { value: profiles[0].id } });
+    selectAssignee(profiles[0]);
     fireEvent.click(screen.getByRole("button", { name: "Tag HUB" }));
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mocks.createRequest).toHaveBeenCalledOnce());
@@ -991,18 +1204,38 @@ describe("KanbanBoard accessibility", () => {
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     expect(screen.queryByTestId("drag-overlay")).not.toBeInTheDocument();
-    act(() => mocks.dragStart({ active: { id: sourceRequest.id } }));
+    act(() => mocks.dragStart({ active: { id: sourceRequest.id, data: { current: { type: "request", columnId: sourceRequest.column_id } } } }));
     expect(screen.getByTestId("drag-overlay")).toHaveTextContent(sourceRequest.title);
 
     act(() => mocks.dragCancel());
     expect(screen.queryByTestId("drag-overlay")).not.toBeInTheDocument();
   });
 
+  it("mostra a prévia de coluna e registra todas as colunas no contexto horizontal", () => {
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+
+    expect(mocks.sortableContexts.some((context) => context.items.join(",") === columns.map((column) => column.id).join(","))).toBe(true);
+    act(() => mocks.dragStart({ active: { id: columns[0].id, data: { current: { type: "column" } } } }));
+    expect(screen.getByTestId("drag-overlay")).toHaveTextContent("Pendente");
+    expect(screen.getByTestId("drag-overlay")).toHaveTextContent("Prévia da lista");
+  });
+
+  it("restringe colisões de coluna a alvos declarados como coluna", () => {
+    render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={{ ...basePermissions, canManageColumns: true }} />);
+    const columnTarget = { id: columns[0].id, data: { current: { type: "column" } } };
+    const requestTarget = { id: sourceRequest.id, data: { current: { type: "request", columnId: sourceRequest.column_id } } };
+
+    mocks.collisionDetection({ active: { id: columns[1].id, data: { current: { type: "column" } } }, droppableContainers: [columnTarget, requestTarget] });
+
+    expect(mocks.closestCenter).toHaveBeenCalledWith(expect.objectContaining({ droppableContainers: [columnTarget] }));
+  });
+
   it("fornece instruções e anúncios de arraste em português com nomes", () => {
     render(<KanbanBoard initialRequests={[sourceRequest]} initialColumns={columns} cities={cities} profiles={profiles} currentUserId="owner" permissions={basePermissions} />);
 
     expect(mocks.accessibility.screenReaderInstructions?.draggable).toMatch(/barra de espaço/i);
-    expect(mocks.accessibility.announcements?.onDragStart({ active: { id: sourceRequest.id } } as Parameters<Announcements["onDragStart"]>[0])).toContain(sourceRequest.title);
-    expect(mocks.accessibility.announcements?.onDragOver({ active: { id: sourceRequest.id }, over: { id: "column-pending" } } as Parameters<Announcements["onDragOver"]>[0])).toContain("Pendente");
+    expect(mocks.accessibility.announcements?.onDragStart({ active: { id: sourceRequest.id, data: { current: { type: "request" } } } } as unknown as Parameters<Announcements["onDragStart"]>[0])).toContain(sourceRequest.title);
+    expect(mocks.accessibility.announcements?.onDragOver({ active: { id: sourceRequest.id, data: { current: { type: "request" } } }, over: { id: "column-pending", data: { current: { type: "column" } } } } as unknown as Parameters<Announcements["onDragOver"]>[0])).toContain("Pendente");
+    expect(mocks.accessibility.announcements?.onDragStart({ active: { id: columns[0].id, data: { current: { type: "column" } } } } as unknown as Parameters<Announcements["onDragStart"]>[0])).toContain("coluna Pendente");
   });
 });
