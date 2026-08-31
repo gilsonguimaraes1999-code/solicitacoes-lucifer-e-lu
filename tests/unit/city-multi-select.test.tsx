@@ -59,6 +59,25 @@ describe("CityMultiSelect", () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
+  it("mantém um checkbox real e desenha selecionar-todas com o marcador escuro e dourado", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<CityMultiSelect cities={cities} value={[]} onChange={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Selecionar cidades" }));
+    const checkbox = screen.getByRole("checkbox", { name: "Selecionar todas" });
+    const marker = checkbox.nextElementSibling;
+
+    expect(checkbox.tagName).toBe("INPUT");
+    expect(checkbox).toHaveAttribute("type", "checkbox");
+    expect(checkbox).toHaveClass("sr-only");
+    expect(marker).toHaveAttribute("aria-hidden", "true");
+    expect(marker).toHaveClass("border-white/30", "bg-white/[.03]");
+
+    rerender(<CityMultiSelect cities={cities} value={[curitiba.id, saoPaulo.id]} onChange={vi.fn()} />);
+    const checkedMarker = screen.getByRole("checkbox", { name: "Desmarcar todas" }).nextElementSibling;
+    expect(checkedMarker).toHaveClass("border-[#d4af37]", "bg-[#d4af37]");
+  });
+
   it("fecha por Escape e preserva cidade desativada já selecionada", async () => {
     const user = userEvent.setup();
     render(<CityMultiSelect cities={cities} value={["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]} onChange={vi.fn()} />);
