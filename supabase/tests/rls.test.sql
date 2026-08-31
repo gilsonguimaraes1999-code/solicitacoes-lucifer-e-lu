@@ -1,5 +1,5 @@
 begin;
-select plan(113);
+select plan(122);
 
 select has_table('public', 'profiles', 'profiles existe');
 select has_table('public', 'user_permissions', 'user_permissions existe');
@@ -12,6 +12,7 @@ select hasnt_function('public', 'move_request', array['uuid','text','numeric'], 
 
 select has_function('public', 'has_column_management_permission', array[]::text[], 'função de permissão de colunas existe');
 select has_function('public', 'create_board_column', array['text','uuid','numeric'], 'RPC de criação de coluna existe');
+select has_function('public', 'create_custom_board_column', array['text','numeric'], 'RPC de criação de lista personalizada existe');
 select has_function('public', 'rename_board_column', array['uuid','text'], 'RPC de renomeação de coluna existe');
 select has_function('public', 'reorder_board_column', array['uuid','numeric'], 'RPC de ordenação de coluna existe');
 select has_function('public', 'delete_board_column', array['uuid'], 'RPC de exclusão de coluna existe');
@@ -22,6 +23,8 @@ select function_privs_are('public', 'has_column_management_permission', array[]:
 select function_privs_are('public', 'has_column_management_permission', array[]::text[], 'public', array[]::text[], 'público não consulta permissão de colunas');
 select function_privs_are('public', 'create_board_column', array['text','uuid','numeric'], 'authenticated', array['EXECUTE'], 'autenticados executam criação de coluna');
 select function_privs_are('public', 'create_board_column', array['text','uuid','numeric'], 'public', array[]::text[], 'público não executa criação de coluna');
+select function_privs_are('public', 'create_custom_board_column', array['text','numeric'], 'authenticated', array['EXECUTE'], 'autenticados executam criação de lista personalizada');
+select function_privs_are('public', 'create_custom_board_column', array['text','numeric'], 'public', array[]::text[], 'público não executa criação de lista personalizada');
 select function_privs_are('public', 'rename_board_column', array['uuid','text'], 'authenticated', array['EXECUTE'], 'autenticados executam renomeação de coluna');
 select function_privs_are('public', 'rename_board_column', array['uuid','text'], 'public', array[]::text[], 'público não executa renomeação de coluna');
 select function_privs_are('public', 'reorder_board_column', array['uuid','numeric'], 'authenticated', array['EXECUTE'], 'autenticados executam ordenação de coluna');
@@ -86,6 +89,46 @@ select results_eq(
 select is_empty(
   $$ select id from public.requests where column_id is null $$,
   'todas as solicitações foram migradas'
+);
+
+select results_eq(
+  $$
+    select name
+    from public.cities
+    where active
+    order by name
+  $$,
+  $$
+    values
+      ('District99'::text),
+      ('Fronteira'::text),
+      ('Grande'::text),
+      ('KNG'::text),
+      ('Krown'::text),
+      ('Liberty99'::text),
+      ('Malta'::text),
+      ('Maresia'::text),
+      ('Nobre'::text),
+      ('Orizon'::text),
+      ('Prime'::text),
+      ('Real'::text),
+      ('Royal'::text),
+      ('Santa'::text)
+  $$,
+  'migrations deixam exatamente as 14 cidades canônicas ativas'
+);
+
+select is_empty(
+  $$
+    select link.request_id, link.city_id
+    from public.request_cities link
+    join public.cities city on city.id = link.city_id
+    where city.name not in (
+      'Nobre', 'Santa', 'Maresia', 'Grande', 'Fronteira', 'Real', 'Prime',
+      'Malta', 'Liberty99', 'District99', 'Krown', 'KNG', 'Royal', 'Orizon'
+    )
+  $$,
+  'nenhum vínculo de solicitação aponta para cidade fora da lista canônica'
 );
 
 insert into auth.users (id, email, raw_user_meta_data)
@@ -230,6 +273,24 @@ select results_eq(
   'owner cria coluna vinculada com dados normalizados'
 );
 
+select results_eq(
+  $$
+    select created.name, created.kind, created.system_key, created.assignee_id, created.position, created.created_by
+    from public.create_custom_board_column('  Prioridades  ', 3584) created
+  $$,
+  $$
+    values (
+      'Prioridades'::text,
+      'custom'::text,
+      null::text,
+      null::uuid,
+      3584::numeric,
+      '00000000-0000-0000-0000-000000000301'::uuid
+    )
+  $$,
+  'owner cria lista personalizada sem sistema ou responsável'
+);
+
 do $$ begin
   perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000302', true);
 end $$;
@@ -270,6 +331,13 @@ select throws_ok(
   'membro sem permissão não cria coluna'
 );
 
+select throws_ok(
+  $$ select public.create_custom_board_column('Bloqueada', 6144) $$,
+  '42501',
+  null,
+  'membro sem permissão não cria lista personalizada'
+);
+
 do $$ begin
   perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000306', true);
 end $$;
@@ -285,6 +353,11 @@ select throws_ok(
   '23505',
   null,
   'responsável não recebe segunda coluna'
+);
+
+select lives_ok(
+  $$ select public.create_custom_board_column('Prioridades', 6144) $$,
+  'listas personalizadas permitem nomes repetidos'
 );
 
 select throws_ok(
@@ -320,6 +393,13 @@ select throws_ok(
   '23514',
   null,
   'criação de coluna recusa posição NaN'
+);
+
+select throws_ok(
+  $$ select public.create_custom_board_column('Posição NaN', 'NaN'::numeric) $$,
+  '23514',
+  null,
+  'criação de lista personalizada recusa posição NaN'
 );
 
 select throws_ok(
@@ -401,16 +481,16 @@ select throws_ok(
   'coluna de sistema não pode ser renomeada'
 );
 
-select throws_ok(
+select results_eq(
   $$
-    select public.reorder_board_column(
+    select reordered.position
+    from public.reorder_board_column(
       (select id from public.board_columns where system_key = 'pending'),
       8192
-    )
+    ) reordered
   $$,
-  '23514',
-  null,
-  'coluna de sistema não pode ser reordenada'
+  $$ values (8192::numeric) $$,
+  'coluna de sistema pode ser reordenada'
 );
 
 select throws_ok(
