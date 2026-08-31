@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type CollisionDetection, type DragEndEvent, type ScreenReaderInstructions } from "@dnd-kit/core";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type CollisionDetection, type DragEndEvent, type Modifier, type ScreenReaderInstructions } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Plus, Search } from "lucide-react";
 import { AddColumn } from "@/components/kanban/add-column";
 import { BoardNotice, type BoardMessage } from "@/components/kanban/board-notice";
 import { BoardFilters } from "@/components/kanban/board-filters";
 import { ColumnPreview } from "@/components/kanban/column-preview";
+import { clampTransformToRect } from "@/components/kanban/drag-boundary";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { RequestCardPreview } from "@/components/kanban/request-card";
 import { RequestDialog } from "@/components/requests/request-dialog";
@@ -55,7 +56,7 @@ type ColumnReorderQueue = {
 };
 
 const boardScreenReaderInstructions: ScreenReaderInstructions = {
-  draggable: "Para mover uma coluna ou solicitação, pressione a barra de espaço. Use as setas para escolher o destino, pressione a barra de espaço novamente para soltar ou Escape para cancelar.",
+  draggable: "Para mover solicitações, pressione a barra de espaço. Use as setas para escolher o destino, pressione a barra de espaço novamente para soltar ou Escape para cancelar. Para mover colunas, use os itens acessíveis do menu de ações da lista.",
 };
 
 type DragItemType = "column" | "request";
@@ -137,6 +138,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
   const [selectedColumn, setSelectedColumn] = useState("all");
   const [selectedTags, setSelectedTags] = useState<RequestTag[]>([]);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
+  const boundaryRef = useRef<HTMLDivElement | null>(null);
   const selectedColumnRef = useRef("all");
   const requestsRef = useRef(sortedInitialRequests);
   const columnsRef = useRef(sortedInitialColumns);
@@ -337,6 +339,16 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
   const visibleColumns = selectedColumn === "all" ? columns : columns.filter((column) => column.id === selectedColumn);
   const activeDragRequest = activeDrag?.type === "request" ? requests.find((request) => request.id === activeDrag.id) : undefined;
   const activeDragColumn = activeDrag?.type === "column" ? columns.find((column) => column.id === activeDrag.id) : undefined;
+  const [dragModifiers] = useState<Modifier[]>(() => [({
+    transform,
+    draggingNodeRect,
+    overlayNodeRect,
+    activeNodeRect,
+  }) => clampTransformToRect(
+    transform,
+    draggingNodeRect ?? overlayNodeRect ?? activeNodeRect,
+    boundaryRef.current?.getBoundingClientRect() ?? null,
+  )]);
   const accessibility = useMemo(() => ({
     screenReaderInstructions: boardScreenReaderInstructions,
     announcements: boardAnnouncements(requests, columns),
@@ -669,7 +681,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
 
   async function reorderColumn(columnId: string, direction: "left" | "right") {
     const currentColumns = columnsRef.current;
-    const currentIndex = currentColumns.findIndex((column) => column.id === columnId && column.kind !== "system");
+    const currentIndex = currentColumns.findIndex((column) => column.id === columnId);
     const targetIndex = currentIndex + (direction === "left" ? -1 : 1);
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= currentColumns.length) return;
 
@@ -693,7 +705,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
 
   return (
     <main className="relative z-10 px-4 py-6 md:px-6 md:py-8">
-      <div className="mx-auto max-w-[1800px]">
+      <div ref={boundaryRef} className="mx-auto max-w-[1800px]" data-drag-boundary="board">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div><p className="eyebrow">Fluxo da equipe</p><h1 className="mt-1 text-3xl font-black text-white">Quadro de solicitações</h1><p className="mt-2 text-sm text-white/50">Acompanhe o trabalho da equipe em tempo real.</p></div>
           {permissions.canCreate && <button className="button inline-flex items-center gap-2" onClick={() => setSelected(null)}><Plus size={18} />Nova solicitação</button>}
@@ -703,7 +715,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
           <label className="relative"><Search className="absolute left-3 top-3 text-white/35" size={18} /><span className="sr-only">Pesquisar</span><input className="field" style={{ paddingLeft: "2.75rem" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, cidade ou responsável" /></label>
           <BoardFilters columns={columns} requests={requests} selected={selectedColumn} onChange={selectColumn} selectedTags={selectedTags} onTagChange={setSelectedTags} />
         </div>
-        <DndContext sensors={sensors} collisionDetection={boardCollisionDetection} onDragStart={({ active }) => {
+        <DndContext sensors={sensors} modifiers={dragModifiers} collisionDetection={boardCollisionDetection} onDragStart={({ active }) => {
           const type = dragItemType(active.data.current);
           setActiveDrag(type ? { id: String(active.id), type } : null);
           }} onDragCancel={() => setActiveDrag(null)} onDragEnd={handleDragEnd} accessibility={accessibility}>
@@ -711,12 +723,12 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
             <SortableContext items={visibleColumns.map((column) => column.id)} strategy={horizontalListSortingStrategy}>
               {visibleColumns.map((column) => {
                 const columnIndex = columns.findIndex((item) => item.id === column.id);
-                return <KanbanColumn key={column.id} column={column} requests={filtered.filter((request) => request.column_id === column.id)} canMove={permissions.canMove} canManageColumns={permissions.canManageColumns} canReorderColumn={permissions.canManageColumns && selectedColumn === "all"} canMoveColumnLeft={column.kind !== "system" && columnIndex > 0} canMoveColumnRight={column.kind !== "system" && columnIndex >= 0 && columnIndex < columns.length - 1} onOpen={setSelected} onRename={renameColumn} onReorder={reorderColumn} onDelete={removeColumn} />;
+                return <KanbanColumn key={column.id} column={column} requests={filtered.filter((request) => request.column_id === column.id)} canMove={permissions.canMove} canManageColumns={permissions.canManageColumns} canReorderColumn={permissions.canManageColumns && selectedColumn === "all"} canMoveColumnLeft={columnIndex > 0} canMoveColumnRight={columnIndex >= 0 && columnIndex < columns.length - 1} onOpen={setSelected} onRename={renameColumn} onReorder={reorderColumn} onDelete={removeColumn} />;
               })}
             </SortableContext>
             <AddColumn columns={columns} profiles={profiles} canManageColumns={permissions.canManageColumns} onCreate={addColumn} />
           </div>
-          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
+          <DragOverlay modifiers={dragModifiers} dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
             {activeDragRequest ? <RequestCardPreview request={activeDragRequest} /> : activeDragColumn ? <ColumnPreview column={activeDragColumn} requestCount={requests.filter((request) => request.column_id === activeDragColumn.id).length} /> : null}
           </DragOverlay>
         </DndContext>
