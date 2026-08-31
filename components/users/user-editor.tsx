@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck, Trash2 } from "lucide-react";
+import { Check, ShieldCheck, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ToastNotice } from "@/components/ui/site-toast";
@@ -68,7 +68,16 @@ export function UserEditor({ user, onClose, onSave, onDelete }: { user: AdminUse
         <div className="flex items-center gap-2"><ShieldCheck size={18} className="text-gold" /><h3 className="font-semibold text-white">Permissões individuais</h3></div>
         {owner && <p className="mt-2 text-sm text-gold-soft">A conta owner possui todas as permissões nativamente.</p>}
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {permissionLabels.map(([key, label, description]) => <label key={key} className="permission-option"><input type="checkbox" aria-label={label} checked={owner || permissions[key]} disabled={busy || owner} onChange={(event) => setPermissions((current) => ({ ...current, [key]: event.target.checked }))} /><span><strong>{label}</strong><small>{description}</small></span></label>)}
+          {permissionLabels.map(([key, label, description]) => {
+            const checked = owner || permissions[key];
+            return <label key={key} className={`flex items-start gap-3 rounded-[.65rem] border border-white/[.08] bg-white/[.025] p-3 text-white/75 ${busy || owner ? "cursor-not-allowed" : "cursor-pointer"}`}>
+              <input className="peer sr-only" type="checkbox" aria-label={label} checked={checked} disabled={busy || owner} onChange={(event) => setPermissions((current) => ({ ...current, [key]: event.target.checked }))} />
+              <span aria-hidden="true" className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#d4af37]/60 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#0c0c0c] peer-disabled:opacity-50 ${checked ? "border-[#d4af37] bg-[#d4af37] text-[#080808]" : "border-white/30 bg-white/[.03]"}`}>
+                {checked && <Check size={12} strokeWidth={3} />}
+              </span>
+              <span className="grid gap-0.5"><strong className="text-[.82rem]">{label}</strong><small className="text-[.72rem] leading-[1.35] text-white/40">{description}</small></span>
+            </label>;
+          })}
         </div>
       </section>
       {error && <ToastNotice text={error} tone="error" onClose={() => setError("")} />}
