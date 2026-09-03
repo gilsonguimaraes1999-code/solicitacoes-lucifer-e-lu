@@ -19,6 +19,7 @@ export async function createRequest(input: RequestInput, _createdBy: string, pos
     new_tags: data.tags,
     new_position: position,
     new_city_ids: data.cityIds,
+    new_created_at_local: data.createdAtLocal,
   });
   if (response.error) throw response.error;
   return getRequest((response.data as Pick<RequestRecordRaw, "id">).id);
@@ -45,6 +46,7 @@ export async function updateRequest(requestId: string, input: RequestInput) {
     new_external_url: data.externalUrl,
     new_tags: data.tags,
     new_city_ids: data.cityIds,
+    new_created_at_local: data.createdAtLocal,
   });
   if (response.error) throw response.error;
   return getRequest((response.data as Pick<RequestRecordRaw, "id">).id);

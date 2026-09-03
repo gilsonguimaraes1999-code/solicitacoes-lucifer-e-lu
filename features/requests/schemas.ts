@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { cityIdsSchema } from "@/features/cities/schemas";
+import { isValidRequestLocalDateTime } from "@/features/requests/date";
 import { REQUEST_TAGS } from "@/features/requests/tags";
 
 const optionalHttpUrl = z
@@ -24,6 +25,7 @@ export const requestSchema = z.object({
   assignedTo: z.uuid("Selecione um responsável"),
   tags: z.array(z.enum(REQUEST_TAGS)).min(1, "Selecione pelo menos uma tag.").max(REQUEST_TAGS.length).refine((tags) => new Set(tags).size === tags.length, "Não repita tags."),
   externalUrl: optionalHttpUrl.optional().default(""),
+  createdAtLocal: z.string().refine(isValidRequestLocalDateTime, "Informe uma data e um horário válidos.").nullable().optional().default(null),
 });
 
 export type RequestInput = z.input<typeof requestSchema>;
