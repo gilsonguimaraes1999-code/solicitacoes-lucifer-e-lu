@@ -101,7 +101,7 @@ describe("RequestDateTimePicker", () => {
     expect(within(calendar).getByRole("button", { name: "2 de setembro de 2026" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("usa a paleta dourada sem texto preto no dia selecionado", () => {
+  it("destaca somente o número do dia selecionado em amarelo, sem círculo", () => {
     render(<RequestDateTimePicker value="2026-09-02T12:34:56" onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Escolher data e horário" }));
 
@@ -109,7 +109,8 @@ describe("RequestDateTimePicker", () => {
     const selectedDay = within(calendar).getByRole("button", { name: "2 de setembro de 2026" });
 
     expect(calendar).toHaveClass("border-[#d4af37]/55");
-    expect(selectedDay).toHaveClass("border-[#d4af37]/70", "bg-[#d4af37]/15", "text-[#f0d77c]");
+    expect(selectedDay).toHaveClass("border-transparent", "bg-transparent", "text-[#f0d77c]");
+    expect(selectedDay).not.toHaveClass("border-[#d4af37]/70", "bg-[#d4af37]/15");
     expect(selectedDay).not.toHaveClass("text-black");
   });
 
