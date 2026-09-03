@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 export type ToastTone = "success" | "error";
@@ -23,13 +24,19 @@ export function ToastNotice({ text, tone, onClose, actionLabel, onAction, placem
     ? "fixed bottom-6 left-1/2 z-[200] w-[calc(100%_-_2rem)] -translate-x-1/2"
     : "relative mx-auto mt-5 w-full";
 
-  return <div role={tone === "error" ? "alert" : "status"} aria-live={tone === "error" ? "assertive" : "polite"} className={`${tone === "error" ? "alert-error" : "alert-success"} ${position} flex max-w-[30rem] items-start justify-between gap-4 shadow-2xl shadow-black/60`}>
+  const notice = <div role={tone === "error" ? "alert" : "status"} aria-live={tone === "error" ? "assertive" : "polite"} className={`${tone === "error" ? "alert-error" : "alert-success"} ${position} flex max-w-[30rem] items-start justify-between gap-4 shadow-2xl shadow-black/60`}>
     <span className="min-w-0 break-words">{text}</span>
     <span className="flex shrink-0 items-center gap-3">
       {actionLabel && onAction && <button type="button" className="font-semibold" onClick={() => { onClose(); onAction(); }}>{actionLabel}</button>}
       <button type="button" aria-label="Fechar mensagem" onClick={onClose}><X size={16} /></button>
     </span>
   </div>;
+
+  if (placement === "fixed" && typeof document !== "undefined") {
+    return createPortal(notice, document.body);
+  }
+
+  return notice;
 }
 
 export function SiteToastProvider({ children }: { children: React.ReactNode }) {
