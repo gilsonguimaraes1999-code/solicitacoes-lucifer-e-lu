@@ -105,7 +105,7 @@ describe("request API", () => {
     expect(mocks.rpc).toHaveBeenCalledWith("create_request_with_cities", expect.objectContaining({ new_city_ids: [city.id] }));
     expect(mocks.rpc.mock.calls[0][1]).not.toHaveProperty("new_requester_name");
     expect(mocks.rpc.mock.calls[0][1]).not.toHaveProperty("requester_name");
-    expect(mocks.rpc.mock.calls[0][1]).toMatchObject({ new_position: 1024 });
+    expect(mocks.rpc.mock.calls[0][1]).toMatchObject({ new_position: 1024, new_created_at_local: null });
   });
 
   it("preserva a posição canônica retornada pelo servidor ao criar", async () => {
@@ -119,11 +119,12 @@ describe("request API", () => {
     mocks.rpc.mockResolvedValue({ data: rawRequest, error: null });
     mockCanonicalRequest();
 
-    await expect(updateRequest(rawRequest.id, requestInput)).resolves.toEqual({ ...requestRecord, cities: [city] });
+    await expect(updateRequest(rawRequest.id, { ...requestInput, createdAtLocal: "2026-09-02T12:34:56" })).resolves.toEqual({ ...requestRecord, cities: [city] });
 
     expect(mocks.rpc).toHaveBeenCalledWith("update_request_with_cities", expect.objectContaining({
       request_id: rawRequest.id,
       new_city_ids: [city.id],
+      new_created_at_local: "2026-09-02T12:34:56",
     }));
     expect(mocks.rpc.mock.calls[0][1]).not.toHaveProperty("new_requester_name");
   });

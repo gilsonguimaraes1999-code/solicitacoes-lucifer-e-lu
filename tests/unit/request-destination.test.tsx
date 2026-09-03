@@ -189,6 +189,54 @@ describe("RequestDialog destination", () => {
   });
 });
 
+describe("RequestDialog creation date", () => {
+  it("cria sem sobrescrever a data quando a opção manual permanece desativada", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={null} onSave={onSave} />);
+    fillRequiredFields();
+    selectCity(cities[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));
+
+    expect(screen.getByRole("checkbox", { name: "Definir data manualmente" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ createdAtLocal: null })));
+  });
+
+  it("permite definir data e horário com segundos na criação", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={null} onSave={onSave} />);
+    fillRequiredFields();
+    selectCity(cities[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Definir data manualmente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Escolher data e horário" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Segundo" }), { target: { value: "07" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].createdAtLocal).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:07$/);
+  });
+
+  it("preserva a data na edição comum e inicia a alteração com o valor existente", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RequestDialog {...baseProps} request={request} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+
+    const toggle = screen.getByRole("checkbox", { name: "Alterar data de criação" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ createdAtLocal: null })));
+
+    onSave.mockClear();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Escolher data e horário" })).toHaveTextContent("28/08/2026 21:00:00");
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ createdAtLocal: "2026-08-28T21:00:00" })));
+  });
+});
+
 describe("RequestDialog tags", () => {
   it("exige uma tag e envia todas as tags selecionadas", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
