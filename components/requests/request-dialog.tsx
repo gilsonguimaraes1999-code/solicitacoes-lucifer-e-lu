@@ -6,11 +6,12 @@ import { CityMultiSelect } from "@/components/cities/city-multi-select";
 import { ToastNotice } from "@/components/ui/site-toast";
 import { RequestTagIcons, RequestTagSelector } from "@/components/requests/request-tags";
 import { AssigneeSelect } from "@/components/requests/assignee-select";
+import { RequestDateTimePicker } from "@/components/requests/request-date-time-picker";
 import type { BoardColumn, SystemColumnKey } from "@/features/columns/types";
 import type { City } from "@/features/cities/types";
 import type { RequestInput } from "@/features/requests/schemas";
 import type { Profile, RequestRecord } from "@/features/requests/types";
-import { formatRequestCreatedAt } from "@/features/requests/date";
+import { currentRequestLocalValue, formatRequestCreatedAt, isValidRequestLocalDateTime, requestInstantToLocalValue } from "@/features/requests/date";
 
 const systemActions: Array<{ key: SystemColumnKey; label: string }> = [
   { key: "pending", label: "Pendente" },
@@ -42,6 +43,7 @@ function requestFormValues(request: RequestRecord | null): RequestInput {
     assignedTo: request?.assigned_to ?? "",
     tags: request?.tags ?? [],
     externalUrl: request?.external_url ?? "",
+    createdAtLocal: null,
   };
 }
 
@@ -67,6 +69,7 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState("");
+  const [overridesCreatedAt, setOverridesCreatedAt] = useState(false);
   const [formValues, setFormValues] = useState<RequestInput>(() => requestFormValues(request));
   const [previousCities, setPreviousCities] = useState(cities);
   const dirtyFieldsRef = useRef(new Set<FormField>());
@@ -92,6 +95,7 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
       assignedTo: dirtyFieldsRef.current.has("assignedTo") ? current.assignedTo : remoteValues.assignedTo,
       tags: dirtyFieldsRef.current.has("tags") ? current.tags : remoteValues.tags,
       externalUrl: dirtyFieldsRef.current.has("externalUrl") ? current.externalUrl : remoteValues.externalUrl,
+      createdAtLocal: dirtyFieldsRef.current.has("createdAtLocal") ? current.createdAtLocal : remoteValues.createdAtLocal,
     }));
   }, [request]);
 
@@ -129,6 +133,10 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
     }
     if (formValues.tags.length === 0) {
       setError("Selecione pelo menos uma tag.");
+      return;
+    }
+    if (overridesCreatedAt && (!formValues.createdAtLocal || !isValidRequestLocalDateTime(formValues.createdAtLocal))) {
+      setError("Informe uma data e um horário válidos.");
       return;
     }
     setBusy(true);
@@ -221,6 +229,28 @@ export function RequestDialog({ request, cities, profiles, columns, canEdit, can
             <p className="-mt-2 text-sm text-white/45" aria-live="polite">{destinationMessage}</p>
             <RequestTagSelector value={formValues.tags} onChange={(tags) => updateField("tags", tags)} />
             <label className="label">Link externo<input className="field" name="externalUrl" type="url" placeholder="https://" value={formValues.externalUrl} onChange={(event) => updateField("externalUrl", event.target.value)} /></label>
+            <div className="grid gap-2 rounded-xl border border-white/10 bg-white/[.025] p-3">
+              <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-white/75">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[#d4af37]"
+                  checked={overridesCreatedAt}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    setOverridesCreatedAt(enabled);
+                    updateField("createdAtLocal", enabled
+                      ? request ? requestInstantToLocalValue(request.created_at) : currentRequestLocalValue()
+                      : null);
+                  }}
+                />
+                {request ? "Alterar data de criação" : "Definir data manualmente"}
+              </label>
+              {overridesCreatedAt && formValues.createdAtLocal && (
+                <RequestDateTimePicker value={formValues.createdAtLocal} onChange={(createdAtLocal) => updateField("createdAtLocal", createdAtLocal)} disabled={busy} />
+              )}
+              <p className="text-xs text-white/40">{overridesCreatedAt ? "Horário de São Paulo. Datas passadas e futuras são permitidas." : request ? "A data atual será preservada." : "Sem seleção manual, será usada a data do envio."}</p>
+            </div>
             <button className="button" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</button>
           </form>
         )}
