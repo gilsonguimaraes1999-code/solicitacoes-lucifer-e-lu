@@ -186,7 +186,7 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
                   type="button"
                   aria-label={dayLabelFormatter.format(date)}
                   aria-pressed={selected}
-                  className={`size-6 rounded-full border text-[11px] font-semibold transition-colors ${selected ? "border-[#d4af37]/70 bg-[#d4af37]/15 text-[#f0d77c]" : "border-transparent text-white/80 hover:border-[#d4af37]/35 hover:bg-[#d4af37]/10 hover:text-[#f0d77c]"}`}
+                  className={`size-6 rounded-full border text-[11px] font-semibold transition-colors ${selected ? "border-transparent bg-transparent text-[#f0d77c]" : "border-transparent text-white/80 hover:border-[#d4af37]/35 hover:bg-[#d4af37]/10 hover:text-[#f0d77c]"}`}
                   onClick={() => selectDay(day)}
                 >
                   {day}
