@@ -783,6 +783,7 @@ export function KanbanBoard({ initialRequests, initialColumns, cities, profiles,
           <div
             ref={boardViewportRef}
             className="kanban-grid kanban-board-scroll"
+            style={{ gridAutoColumns: "minmax(min(100%, 340px), 340px)" }}
             role="region"
             aria-label="Quadro de listas"
             tabIndex={0}

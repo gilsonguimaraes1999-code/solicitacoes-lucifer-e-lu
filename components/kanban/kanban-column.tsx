@@ -27,6 +27,6 @@ export function KanbanColumn({ column, requests, canMove, canManageColumns, canR
         <ColumnActions key={`${column.id}-${renameRequest}`} column={column} canManageColumns={canManageColumns} canMoveLeft={canMoveColumnLeft} canMoveRight={canMoveColumnRight} initialRenaming={renameRequest > 0} onRename={onRename} onReorder={onReorder} onDelete={onDelete} />
       </div>
     </header>
-    <SortableContext items={requests.map((item) => item.id)} strategy={verticalListSortingStrategy}><div aria-label={`Solicitações em ${column.name}`} className="city-options-scroll grid min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain pr-1">{requests.map((request) => <RequestCard key={request.id} request={request} canMove={canMove} onOpen={() => onOpen(request)} />)}{requests.length === 0 && <p className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-white/35">Nenhuma solicitação nesta coluna.</p>}</div></SortableContext>
+    <SortableContext items={requests.map((item) => item.id)} strategy={verticalListSortingStrategy}><div aria-label={`Solicitações em ${column.name}`} className="city-options-scroll grid min-h-0 flex-1 gap-3 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">{requests.map((request) => <RequestCard key={request.id} request={request} canMove={canMove} onOpen={() => onOpen(request)} />)}{requests.length === 0 && <p className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-white/35">Nenhuma solicitação nesta coluna.</p>}</div></SortableContext>
   </section>;
 }
