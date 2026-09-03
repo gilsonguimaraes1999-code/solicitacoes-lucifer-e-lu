@@ -8,8 +8,8 @@ select has_function('public', 'create_city', array['text'], 'create_city existe'
 select has_function('public', 'rename_city', array['uuid','text'], 'rename_city existe');
 select has_function('public', 'deactivate_city', array['uuid'], 'deactivate_city existe');
 select has_function('public', 'reactivate_city', array['uuid'], 'reactivate_city existe');
-select has_function('public', 'create_request_with_cities', array['text','text','uuid','text','numeric','text[]','uuid[]'], 'RPC de criação com cidades existe');
-select has_function('public', 'update_request_with_cities', array['uuid','text','text','uuid','text','text[]','uuid[]'], 'RPC de edição com cidades existe');
+select has_function('public', 'create_request_with_cities', array['text','text','uuid','text','numeric','text[]','uuid[]','timestamp without time zone'], 'RPC de criação com cidades e data opcional existe');
+select has_function('public', 'update_request_with_cities', array['uuid','text','text','uuid','text','text[]','uuid[]','timestamp without time zone'], 'RPC de edição com cidades e data opcional existe');
 select col_is_pk('public', 'request_cities', array['request_id','city_id'], 'vínculo não duplica');
 select ok((select count(*) from public.request_cities) = (select count(*) from public.requests), 'backfill associa cada solicitação legada');
 select ok(not has_table_privilege('authenticated', 'public.cities', 'insert'), 'cliente não insere cidades diretamente');
