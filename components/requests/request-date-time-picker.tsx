@@ -2,6 +2,7 @@
 
 import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   joinRequestLocalDateTime,
   splitRequestLocalDateTime,
@@ -16,7 +17,17 @@ interface RequestDateTimePickerProps {
 
 const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 const dayLabelFormatter = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const monthLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const weekDays = ["D", "S", "T", "Q", "Q", "S", "S"];
+const POPOVER_WIDTH = 260;
+const POPOVER_HEIGHT = 280;
+const VIEWPORT_PADDING = 8;
+const POPOVER_GAP = 8;
+
+interface PopoverPosition {
+  left: number;
+  top: number;
+}
 
 function utcDate(year: number, monthIndex: number, day: number) {
   const value = new Date(0);
@@ -44,6 +55,25 @@ function mergeDateTimeParts(
   };
 }
 
+function calculatePopoverPosition(rect: DOMRect): PopoverPosition {
+  const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2);
+  const effectiveWidth = Math.min(POPOVER_WIDTH, availableWidth);
+  const left = Math.min(
+    Math.max(VIEWPORT_PADDING, rect.right - effectiveWidth),
+    Math.max(VIEWPORT_PADDING, window.innerWidth - VIEWPORT_PADDING - effectiveWidth),
+  );
+  const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_PADDING;
+  const openAbove = spaceBelow < POPOVER_HEIGHT && rect.top > spaceBelow;
+  const desiredTop = openAbove
+    ? rect.top - POPOVER_GAP - POPOVER_HEIGHT
+    : rect.bottom + POPOVER_GAP;
+  const top = Math.min(
+    Math.max(VIEWPORT_PADDING, desiredTop),
+    Math.max(VIEWPORT_PADDING, window.innerHeight - VIEWPORT_PADDING - POPOVER_HEIGHT),
+  );
+  return { left, top };
+}
+
 export function RequestDateTimePicker({ value, onChange, disabled = false }: RequestDateTimePickerProps) {
   const parsedParts = splitRequestLocalDateTime(value);
   if (!parsedParts) throw new Error("RequestDateTimePicker exige uma data local válida.");
@@ -51,13 +81,16 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
 
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => utcDate(parts.year, parts.month - 1, 1));
+  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const closeFromOutside = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !popoverRef.current?.contains(target)) setOpen(false);
     };
     const closeFromEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -66,9 +99,16 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
     };
     document.addEventListener("pointerdown", closeFromOutside);
     document.addEventListener("keydown", closeFromEscape);
+    const reposition = () => {
+      if (triggerRef.current) setPopoverPosition(calculatePopoverPosition(triggerRef.current.getBoundingClientRect()));
+    };
+    window.addEventListener("resize", reposition);
+    document.addEventListener("scroll", reposition, true);
     return () => {
       document.removeEventListener("pointerdown", closeFromOutside);
       document.removeEventListener("keydown", closeFromEscape);
+      window.removeEventListener("resize", reposition);
+      document.removeEventListener("scroll", reposition, true);
     };
   }, [open]);
 
@@ -103,7 +143,10 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
         disabled={disabled}
         className="field flex w-full items-center justify-between gap-3 text-left text-white"
         onClick={() => {
-          if (!open) setViewMonth(utcDate(parts.year, parts.month - 1, 1));
+          if (!open) {
+            setViewMonth(utcDate(parts.year, parts.month - 1, 1));
+            setPopoverPosition(calculatePopoverPosition(triggerRef.current!.getBoundingClientRect()));
+          }
           setOpen((current) => !current);
         }}
       >
@@ -111,21 +154,30 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
         <CalendarClock size={18} className="text-gold-soft" aria-hidden="true" />
       </button>
 
-      {open && !disabled && (
-        <div role="dialog" aria-label="Calendário da solicitação" className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full min-w-72 rounded-2xl border border-gold/45 bg-[#0d0d0d] p-4 shadow-2xl shadow-black/70">
-          <div className="flex items-center justify-between gap-3">
-            <button type="button" aria-label="Mês anterior" className="grid size-8 place-items-center rounded-lg border border-white/12 text-white/70 hover:border-gold/55 hover:text-gold-soft" onClick={() => moveMonth(-1)}><ChevronLeft size={17} /></button>
-            <strong className="text-sm capitalize text-white">{monthFormatter.format(viewMonth)}</strong>
-            <button type="button" aria-label="Próximo mês" className="grid size-8 place-items-center rounded-lg border border-white/12 text-white/70 hover:border-gold/55 hover:text-gold-soft" onClick={() => moveMonth(1)}><ChevronRight size={17} /></button>
+      {open && !disabled && popoverPosition && createPortal(
+        <div
+          ref={popoverRef}
+          role="dialog"
+          aria-label="Calendário da solicitação"
+          className="fixed z-[320] w-[260px] max-w-[calc(100vw-1rem)] rounded-xl border border-gold/55 bg-[#0d0d0d] p-2.5 shadow-xl shadow-black/70"
+          style={{ left: popoverPosition.left, top: popoverPosition.top }}
+        >
+          <div className="flex h-7 items-center justify-between gap-2">
+            <button type="button" aria-label="Mês anterior" className="grid size-7 place-items-center rounded-md text-white/65 hover:bg-gold/10 hover:text-gold-soft" onClick={() => moveMonth(-1)}><ChevronLeft size={15} /></button>
+            <strong className="text-xs text-white">
+              <span aria-hidden="true">{monthLabels[monthIndex]} {year}</span>
+              <span className="sr-only">{monthFormatter.format(viewMonth)}</span>
+            </strong>
+            <button type="button" aria-label="Próximo mês" className="grid size-7 place-items-center rounded-md text-white/65 hover:bg-gold/10 hover:text-gold-soft" onClick={() => moveMonth(1)}><ChevronRight size={15} /></button>
           </div>
 
-          <div className="mt-4 grid grid-cols-7 gap-1" aria-hidden="true">
-            {weekDays.map((weekDay) => <span key={weekDay} className="py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white/35">{weekDay}</span>)}
+          <div className="mt-1 grid grid-cols-7 place-items-center gap-0.5" aria-hidden="true">
+            {weekDays.map((weekDay, index) => <span key={`${weekDay}-${index}`} className="grid size-6 place-items-center text-[9px] font-bold text-white/35">{weekDay}</span>)}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 place-items-center gap-0.5">
             {Array.from({ length: 42 }, (_, index) => {
               const day = index - firstWeekDay + 1;
-              if (day < 1 || day > daysInMonth) return <span key={`blank-${index}`} className="size-8" aria-hidden="true" />;
+              if (day < 1 || day > daysInMonth) return <span key={`blank-${index}`} className="size-6" aria-hidden="true" />;
               const date = utcDate(year, monthIndex, day);
               const selected = parts.year === year && parts.month === monthIndex + 1 && parts.day === day;
               return (
@@ -134,7 +186,7 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
                   type="button"
                   aria-label={dayLabelFormatter.format(date)}
                   aria-pressed={selected}
-                  className={`size-8 rounded-lg text-xs font-semibold transition-colors ${selected ? "bg-gold text-black" : "text-white/75 hover:bg-gold/15 hover:text-gold-soft"}`}
+                  className={`size-6 rounded-full text-[11px] font-semibold transition-colors ${selected ? "bg-gold text-black" : "text-white/75 hover:bg-gold/15 hover:text-gold-soft"}`}
                   onClick={() => selectDay(day)}
                 >
                   {day}
@@ -143,14 +195,14 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
             })}
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/8 pt-4">
+          <div className="mt-2 grid grid-cols-3 gap-1.5 border-t border-white/8 pt-2">
             {([
-              ["hour", "Hora", 23],
-              ["minute", "Minuto", 59],
-              ["second", "Segundo", 59],
-            ] as const).map(([field, label, maximum]) => (
-              <label key={field} className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-white/45">
-                {label}
+              ["hour", "Hora", "Hora", 23],
+              ["minute", "Minuto", "Min", 59],
+              ["second", "Segundo", "Seg", 59],
+            ] as const).map(([field, label, shortLabel, maximum]) => (
+              <label key={field} className="grid gap-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-white/40">
+                {shortLabel}
                 <input
                   type="number"
                   inputMode="numeric"
@@ -158,13 +210,14 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
                   min={0}
                   max={maximum}
                   value={String(parts[field]).padStart(2, "0")}
-                  className="field h-10 px-2 text-center text-sm text-white"
+                  className="field h-8 px-1 text-center text-xs text-white"
                   onChange={(event) => updateTime(field, event.target.value, maximum)}
                 />
               </label>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
