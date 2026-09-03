@@ -1,5 +1,5 @@
 begin;
-select plan(154);
+select plan(162);
 
 select has_table('public', 'profiles', 'profiles existe');
 select has_table('public', 'user_permissions', 'user_permissions existe');
@@ -10,6 +10,10 @@ select col_is_pk('public', 'user_permissions', 'user_id', 'permissões têm uma 
 select has_function('public', 'is_approved', array['uuid'], 'função de aprovação existe');
 select has_function('public', 'update_request_content', array['uuid','text','text','text','uuid','text'], 'RPC de edição existe');
 select hasnt_function('public', 'move_request', array['uuid','text','numeric'], 'RPC legada de movimentação foi removida');
+select has_function('public', 'create_request_with_cities', array['text','text','uuid','text','numeric','text[]','uuid[]','timestamp without time zone'], 'RPC de criação aceita data local opcional');
+select has_function('public', 'update_request_with_cities', array['uuid','text','text','uuid','text','text[]','uuid[]','timestamp without time zone'], 'RPC de edição aceita data local opcional');
+select hasnt_function('public', 'create_request_with_cities', array['text','text','uuid','text','numeric','text[]','uuid[]'], 'sobrecarga antiga de criação foi removida');
+select hasnt_function('public', 'update_request_with_cities', array['uuid','text','text','uuid','text','text[]','uuid[]'], 'sobrecarga antiga de edição foi removida');
 
 select has_function('public', 'has_column_management_permission', array[]::text[], 'função de permissão de colunas existe');
 select has_function('public', 'create_board_column', array['text','uuid','numeric'], 'RPC de criação de coluna existe');
@@ -1127,6 +1131,75 @@ select ok(
     group by created.position
   ),
   'nova solicitação fica acima de todas as anteriores na coluna de destino real'
+);
+
+select is(
+  (
+    public.create_request_with_cities(
+      'Pedido com data manual',
+      null,
+      '00000000-0000-0000-0000-000000000305',
+      null,
+      1024,
+      array['growth'],
+      array[(select id from public.cities where name = 'Cidade Alfa')],
+      timestamp '2026-09-02 12:34:56'
+    )
+  ).created_at,
+  timestamptz '2026-09-02 15:34:56+00',
+  'criação converte o horário de São Paulo para timestamptz'
+);
+
+select ok(
+  abs(extract(epoch from (
+    (
+      public.create_request_with_cities(
+        'Pedido com data automática',
+        null,
+        '00000000-0000-0000-0000-000000000305',
+        null,
+        1024,
+        array['growth'],
+        array[(select id from public.cities where name = 'Cidade Alfa')],
+        null
+      )
+    ).created_at - clock_timestamp()
+  ))) < 5,
+  'criação sem data manual usa o instante atual'
+);
+
+select is(
+  (
+    public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com data manual'),
+      'Pedido com data preservada',
+      null,
+      '00000000-0000-0000-0000-000000000305',
+      null,
+      array['growth'],
+      array[(select id from public.cities where name = 'Cidade Alfa')],
+      null
+    )
+  ).created_at,
+  timestamptz '2026-09-02 15:34:56+00',
+  'edição sem data manual preserva created_at'
+);
+
+select is(
+  (
+    public.update_request_with_cities(
+      (select id from public.requests where title = 'Pedido com data preservada'),
+      'Pedido com data alterada',
+      null,
+      '00000000-0000-0000-0000-000000000305',
+      null,
+      array['growth'],
+      array[(select id from public.cities where name = 'Cidade Alfa')],
+      timestamp '2027-01-15 23:59:58'
+    )
+  ).created_at,
+  timestamptz '2027-01-16 02:59:58+00',
+  'edição aceita data futura com segundos no horário de São Paulo'
 );
 
 do $$ begin
