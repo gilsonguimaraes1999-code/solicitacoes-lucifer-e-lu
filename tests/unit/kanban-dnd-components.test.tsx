@@ -61,7 +61,7 @@ describe("Kanban DnD components", () => {
 
     expect(column).toHaveClass("flex", "max-h-full", "min-h-0", "flex-col");
     expect(column).not.toHaveClass("h-full");
-    expect(requestList).toHaveClass("min-h-0", "flex-1", "overflow-y-auto");
+    expect(requestList).toHaveClass("min-h-0", "flex-1", "overflow-x-hidden", "overflow-y-auto");
     expect(requestList).not.toHaveClass("max-h-[min(28rem,calc(100dvh-18rem))]");
   });
 
@@ -73,6 +73,19 @@ describe("Kanban DnD components", () => {
     fireEvent.click(screen.getByRole("button", { name: `Abrir ${request.title}` }));
     expect(onOpen).toHaveBeenCalledOnce();
     expect(screen.getByText("Criada em: 28/08/2026 21:00:00")).toBeInTheDocument();
+  });
+
+  it("mantém Abrir link e a data completa na mesma linha sem alargar o cartão", () => {
+    render(<RequestCard request={{ ...request, external_url: "https://example.com" }} canMove onOpen={vi.fn()} />);
+
+    const link = screen.getByRole("link", { name: "Abrir link" });
+    const date = screen.getByText("Criada em: 28/08/2026 21:00:00");
+    const footer = link.parentElement;
+
+    expect(footer).toContainElement(date);
+    expect(footer).toHaveClass("flex-nowrap", "overflow-hidden");
+    expect(link).toHaveClass("shrink-0");
+    expect(date).toHaveClass("shrink-0", "whitespace-nowrap");
   });
 
   it("aplica a cor persistida à etiqueta da coluna", () => {

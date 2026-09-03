@@ -185,6 +185,7 @@ describe("KanbanBoard", () => {
     const addList = within(scrollRegion).getByRole("button", { name: /adicionar outra lista/i });
 
     expect(scrollRegion).toHaveClass("kanban-grid", "kanban-board-scroll");
+    expect(scrollRegion).toHaveStyle({ gridAutoColumns: "minmax(min(100%, 340px), 340px)" });
     expect(scrollRegion.children).toHaveLength(7);
     expect(addList.parentElement).toBe(scrollRegion);
     expect(within(scrollRegion).getAllByRole("heading", { level: 2 })).toHaveLength(6);
