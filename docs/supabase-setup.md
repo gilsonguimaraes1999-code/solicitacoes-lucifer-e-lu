@@ -337,3 +337,21 @@ O `migration list` deve alinhar `001`–`016` e o dry-run não deve listar migra
 6. Só então publique o frontend que consulta `cities` por `position`, `name` e `id` e chama `reorder_city(uuid,uuid,uuid)`. Não publique antes disso: o novo painel e os seletores dependem desses contratos. Esta documentação descreve o procedimento; ela não significa que a `016` já foi aplicada em qualquer ambiente remoto.
 
 Se a execução da `016` falhar, trate o resultado como schema não aplicado. Corrija o problema em uma nova migration revisada ou restaure o backup conforme a política da equipe; não edite a `016` nem use `migration repair` para mascarar divergência entre histórico e schema real.
+
+## Rollout da data manual das solicitações — migration 019
+
+A migration `202609020019_request_created_at_override.sql` troca as RPCs canônicas de criação e edição por assinaturas com o parâmetro final opcional `new_created_at_local timestamp without time zone`. O banco interpreta o valor em `America/Sao_Paulo`; `null` usa a data atual ao criar e preserva `requests.created_at` ao editar.
+
+1. Confirme que as migrations anteriores do ambiente estão aplicadas e revise a fila antes de executar qualquer SQL.
+2. Aplique a `019` inteira em uma transação. Quando não houver CLI/`psql`, cole todo o arquivo no SQL Editor do projeto correto e execute uma única vez.
+3. Valide as assinaturas antes de publicar o frontend:
+
+```sql
+select
+  to_regprocedure('public.create_request_with_cities(text,text,uuid,text,numeric,text[],uuid[],timestamp without time zone)') as create_with_date,
+  to_regprocedure('public.update_request_with_cities(uuid,text,text,uuid,text,text[],uuid[],timestamp without time zone)') as update_with_date,
+  to_regprocedure('public.create_request_with_cities(text,text,uuid,text,numeric,text[],uuid[])') as obsolete_create,
+  to_regprocedure('public.update_request_with_cities(uuid,text,text,uuid,text,text[],uuid[])') as obsolete_update;
+```
+
+As duas primeiras colunas devem resolver; as duas últimas devem retornar `null`. Só então publique o frontend que envia `new_created_at_local`. No smoke test, crie uma solicitação sem data manual, outra com data passada e segundos, outra com data futura, edite sem alterar a data e depois edite ativando a alteração. Confirme que todos os horários exibidos correspondem ao fuso de São Paulo.
