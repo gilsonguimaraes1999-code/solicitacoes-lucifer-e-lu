@@ -245,7 +245,10 @@ describe("RequestDialog tags", () => {
     selectCity(cities[0]);
 
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
-    expect(await screen.findByText("Selecione pelo menos uma tag.")).toBeInTheDocument();
+    const validationNotice = await screen.findByRole("alert");
+    expect(validationNotice).toHaveTextContent("Selecione pelo menos uma tag.");
+    expect(validationNotice.parentElement).toBe(document.body);
+    expect(validationNotice).toHaveClass("fixed", "bottom-6", "left-1/2");
     expect(onSave).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Tag Loja" }));

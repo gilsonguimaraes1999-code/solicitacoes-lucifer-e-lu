@@ -18,7 +18,10 @@ const validInput = {
   externalUrl: "",
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("request date-time domain", () => {
   it("aceita data local completa e rejeita calendário ou horário impossíveis", () => {
@@ -55,6 +58,33 @@ describe("request date-time domain", () => {
 });
 
 describe("RequestDateTimePicker", () => {
+  it("abre um popover compacto dentro da viewport sem aumentar o scroll do modal", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 760 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    render(<RequestDateTimePicker value="2026-09-02T12:34:56" onChange={vi.fn()} />);
+
+    const trigger = screen.getByRole("button", { name: "Escolher data e horário" });
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+      bottom: 570,
+      height: 48,
+      left: 620,
+      right: 740,
+      top: 522,
+      width: 120,
+      x: 620,
+      y: 522,
+      toJSON: () => ({}),
+    });
+    fireEvent.click(trigger);
+
+    const calendar = screen.getByRole("dialog", { name: "Calendário da solicitação" });
+    expect(calendar.parentElement).toBe(document.body);
+    expect(calendar).toHaveClass("fixed", "w-[260px]");
+    expect(Number.parseFloat(calendar.style.top)).toBeLessThan(522);
+    expect(Number.parseFloat(calendar.style.left)).toBeGreaterThanOrEqual(8);
+    expect(Number.parseFloat(calendar.style.left) + 260).toBeLessThanOrEqual(752);
+  });
+
   it("abre um calendário temático com a data e o horário completos", () => {
     render(<RequestDateTimePicker value="2026-09-02T12:34:56" onChange={vi.fn()} />);
 
