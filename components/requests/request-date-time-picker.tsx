@@ -159,16 +159,16 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
           ref={popoverRef}
           role="dialog"
           aria-label="Calendário da solicitação"
-          className="fixed z-[320] w-[260px] max-w-[calc(100vw-1rem)] rounded-xl border border-gold/55 bg-[#0d0d0d] p-2.5 shadow-xl shadow-black/70"
+          className="fixed z-[320] w-[260px] max-w-[calc(100vw-1rem)] rounded-xl border border-[#d4af37]/55 bg-[#0d0d0d] p-2.5 shadow-xl shadow-black/70"
           style={{ left: popoverPosition.left, top: popoverPosition.top }}
         >
           <div className="flex h-7 items-center justify-between gap-2">
-            <button type="button" aria-label="Mês anterior" className="grid size-7 place-items-center rounded-md text-white/65 hover:bg-gold/10 hover:text-gold-soft" onClick={() => moveMonth(-1)}><ChevronLeft size={15} /></button>
+            <button type="button" aria-label="Mês anterior" className="grid size-7 place-items-center rounded-md text-white/65 hover:bg-[#d4af37]/10 hover:text-gold-soft" onClick={() => moveMonth(-1)}><ChevronLeft size={15} /></button>
             <strong className="text-xs text-white">
               <span aria-hidden="true">{monthLabels[monthIndex]} {year}</span>
               <span className="sr-only">{monthFormatter.format(viewMonth)}</span>
             </strong>
-            <button type="button" aria-label="Próximo mês" className="grid size-7 place-items-center rounded-md text-white/65 hover:bg-gold/10 hover:text-gold-soft" onClick={() => moveMonth(1)}><ChevronRight size={15} /></button>
+            <button type="button" aria-label="Próximo mês" className="grid size-7 place-items-center rounded-md text-white/65 hover:bg-[#d4af37]/10 hover:text-gold-soft" onClick={() => moveMonth(1)}><ChevronRight size={15} /></button>
           </div>
 
           <div className="mt-1 grid grid-cols-7 place-items-center gap-0.5" aria-hidden="true">
@@ -186,7 +186,7 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
                   type="button"
                   aria-label={dayLabelFormatter.format(date)}
                   aria-pressed={selected}
-                  className={`size-6 rounded-full text-[11px] font-semibold transition-colors ${selected ? "bg-gold text-black" : "text-white/75 hover:bg-gold/15 hover:text-gold-soft"}`}
+                  className={`size-6 rounded-full border text-[11px] font-semibold transition-colors ${selected ? "border-[#d4af37]/70 bg-[#d4af37]/15 text-[#f0d77c]" : "border-transparent text-white/80 hover:border-[#d4af37]/35 hover:bg-[#d4af37]/10 hover:text-[#f0d77c]"}`}
                   onClick={() => selectDay(day)}
                 >
                   {day}
@@ -195,13 +195,13 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
             })}
           </div>
 
-          <div className="mt-2 grid grid-cols-3 gap-1.5 border-t border-white/8 pt-2">
+          <div className="mt-2 grid grid-cols-3 gap-1.5 border-t border-[#d4af37]/20 pt-2">
             {([
               ["hour", "Hora", "Hora", 23],
               ["minute", "Minuto", "Min", 59],
               ["second", "Segundo", "Seg", 59],
             ] as const).map(([field, label, shortLabel, maximum]) => (
-              <label key={field} className="grid gap-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-white/40">
+              <label key={field} className="grid w-full items-center gap-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-white/50">
                 {shortLabel}
                 <input
                   type="number"
@@ -210,7 +210,7 @@ export function RequestDateTimePicker({ value, onChange, disabled = false }: Req
                   min={0}
                   max={maximum}
                   value={String(parts[field]).padStart(2, "0")}
-                  className="field h-8 px-1 text-center text-xs text-white"
+                  className="field h-8 px-1 text-center text-xs text-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   onChange={(event) => updateTime(field, event.target.value, maximum)}
                 />
               </label>
